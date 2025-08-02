@@ -69,11 +69,12 @@ typedef struct {
 
 void task_ui(void* argument);
 
-//bool ao_ui_send_event(msg_event_t msg);
+extern TaskHandle_t ui_task_handle;
 
 bool ao_ui_send_event(ui_message_t* msg);
 
 void ao_ui_init();
+void ao_ui_turOffLeds(void);
 
 /********************** End of CPP guard *************************************/
 #ifdef __cplusplus

@@ -112,7 +112,6 @@ static void free_msg_callback(void* context) {
 /********************** external functions definition ************************/
 
 
-
 void task_button(void* argument) {
 
 	LOGGER_INFO("button init");
@@ -139,76 +138,6 @@ void task_button(void* argument) {
         vTaskDelay(pdMS_TO_TICKS(TASK_PERIOD_MS_));
     }
 }
-
-
-//void task_button(void* argument)
-//{
-//
-//	LOGGER_INFO("button init");
-//
-//  button_init_();
-//
-////  while(true)
-////  {
-////    GPIO_PinState button_state;
-////    button_state = HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN);
-////
-////    button_type_t button_type;
-////    button_type = button_process_state_(!button_state);
-////
-////    if (button_type != BUTTON_TYPE_NONE) {
-////        ui_message_t* pmsg = pvPortMalloc(sizeof(ui_message_t));
-////        if (pmsg != NULL) {
-////
-////        	LOGGER_INFO("Memoria alocada: %d", sizeof(pmsg));
-////
-////        	pmsg->event = (msg_event_t)button_type;
-////        	pmsg->callback = free_msg_callback;
-////            pmsg->context = pmsg;
-////
-////            if (!ao_ui_send_event(pmsg)) {
-////            	LOGGER_INFO("Mensaje no enviado");
-////                vPortFree(pmsg);
-////                LOGGER_INFO("Memoria liberada desde button");
-////            }
-////        }
-////    }
-////
-////    vTaskDelay((TickType_t)(TASK_PERIOD_MS_ / portTICK_PERIOD_MS));
-////  }
-//
-//  while(true)
-//  {
-//    GPIO_PinState button_state;
-//    button_state = HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN);
-//
-//    button_type_t button_type;
-//    button_type = button_process_state_(!button_state);
-//
-//    switch (button_type) {
-//      case BUTTON_TYPE_NONE:
-//        break;
-//      case BUTTON_TYPE_PULSE:
-//        LOGGER_INFO("button pulse");
-//        ao_ui_send_event(MSG_EVENT_BUTTON_PULSE);
-//        break;
-//      case BUTTON_TYPE_SHORT:
-//        LOGGER_INFO("button short");
-//        ao_ui_send_event(MSG_EVENT_BUTTON_SHORT);
-//        break;
-//      case BUTTON_TYPE_LONG:
-//        LOGGER_INFO("button long");
-//        ao_ui_send_event(MSG_EVENT_BUTTON_LONG);
-//        break;
-//      default:
-//        LOGGER_INFO("button error");
-//        ao_ui_send_event(MSG_EVENT__N);
-//        break;
-//    }
-//
-//    vTaskDelay((TickType_t)(TASK_PERIOD_MS_ / portTICK_PERIOD_MS));
-//  }
-//}
 
 /********************** end of file ******************************************/
 
