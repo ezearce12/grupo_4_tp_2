@@ -34,35 +34,35 @@
 
 /********************** inclusions *******************************************/
 
-#include <stdio.h>
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 
-#include "main.h"
-#include "cmsis_os.h"
 #include "board.h"
-#include "logger.h"
+#include "cmsis_os.h"
 #include "dwt.h"
+#include "logger.h"
+#include "main.h"
 
-#include "task_ui.h"
 #include "task_led.h"
+#include "task_ui.h"
 
 /********************** macros and definitions *******************************/
 #define QUEUE_LENGTH_            (1)
 #define QUEUE_ITEM_SIZE_         (sizeof(ui_message_t))
 /********************** internal data declaration ****************************/
-typedef struct
-{
-    QueueHandle_t hqueue;
+typedef struct {
+  QueueHandle_t hqueue;
 } ao_ui_handle_t;
 /********************** internal functions declaration ***********************/
 
 /********************** internal data definition *****************************/
 static ao_ui_handle_t hao_;
+static QueueHandle_t q_reactor;
 /********************** external data definition *****************************/
 
-//extern SemaphoreHandle_t hsem_button;
-//extern SemaphoreHandle_t hsem_led;
+// extern SemaphoreHandle_t hsem_button;
+// extern SemaphoreHandle_t hsem_led;
 
 extern ao_led_handle_t led_red;
 extern ao_led_handle_t led_green;
@@ -72,144 +72,100 @@ extern ao_led_handle_t led_blue;
 
 /********************** external functions definition ************************/
 
-TaskHandle_t ui_task_handle = NULL;
+// static void callback_(int id)
+//{
+//   LOGGER_INFO("callback: %d", id);
+// }
 
-static void led_cb(void* context) {
+static void led_cb(void *context) {
 
-	vPortFree(context);
-    LOGGER_INFO("Memoria liberada desde led_cb");
+  vPortFree(context);
+  LOGGER_INFO("Memoria liberada desde led_callback");
 }
 
+void task_reactor(void *arg) {
+  ui_message_t *uimsg;
+  msg_event_t last = MSG_EVENT__N;
 
-void task_ui(void *argument) {
+  /* arranque: LEDs OFF */
+  ao_led_dispatch(&led_red, &(ao_led_message_t){.action = AO_LED_MESSAGE_OFF,
+                                                .callback = led_cb});
+  ao_led_dispatch(&led_green, &(ao_led_message_t){.action = AO_LED_MESSAGE_OFF,
+                                                  .callback = led_cb});
+  ao_led_dispatch(&led_blue, &(ao_led_message_t){.action = AO_LED_MESSAGE_OFF,
+                                                 .callback = led_cb});
 
-	int id = 0;
-	msg_event_t last_event_msg = MSG_EVENT__N; // Se inicializa con un evento no válido
+  for (;;) {
+    if (pdPASS != xQueueReceive(q_reactor, &uimsg, portMAX_DELAY))
+      continue;
 
-    while (true) {
-        ui_message_t* pmsg = NULL;
-
-
-        if (hao_.hqueue != NULL) {
-
-        	if(pdPASS == xQueueReceive(hao_.hqueue, &pmsg, portMAX_DELAY)) {
-				LOGGER_INFO("UI: Nuevo evento recibido: %d", pmsg->event);
-				LOGGER_INFO("UI: Anterior evento recibido: %d", last_event_msg);
-
-				if(pmsg->event != last_event_msg) {
-
-					// Apagar LED anterior
-					ao_led_message_t* led_msg_off = pvPortMalloc(sizeof(ao_led_message_t));
-
-					if (led_msg_off) {
-						led_msg_off->id = ++id;
-						led_msg_off->callback = led_cb;
-						led_msg_off->action = AO_LED_MESSAGE_OFF;
-						led_msg_off->value = 0;
-
-						switch (last_event_msg) {
-							case MSG_EVENT_BUTTON_PULSE:
-								ao_led_send(&led_red, led_msg_off);
-								break;
-							case MSG_EVENT_BUTTON_SHORT:
-								ao_led_send(&led_green, led_msg_off);
-								break;
-							case MSG_EVENT_BUTTON_LONG:
-								ao_led_send(&led_blue, led_msg_off);
-								break;
-							default:
-								vPortFree(led_msg_off);
-								break;
-						}
-					}
-
-
-					// Encender nuevo LED
-					ao_led_message_t* led_msg_on = pvPortMalloc(sizeof(ao_led_message_t));
-
-					if (led_msg_on) {
-						led_msg_on->id = ++id;
-						led_msg_on->callback = led_cb;
-						led_msg_on->action = AO_LED_MESSAGE_ON;
-						led_msg_on->value = 0;
-
-						switch (pmsg->event) {
-							case MSG_EVENT_BUTTON_PULSE:
-								ao_led_send(&led_red, led_msg_on);
-								break;
-							case MSG_EVENT_BUTTON_SHORT:
-								ao_led_send(&led_green, led_msg_on);
-								break;
-							case MSG_EVENT_BUTTON_LONG:
-								ao_led_send(&led_blue, led_msg_on);
-								break;
-							default:
-								vPortFree(led_msg_on);
-								break;
-						}
-					}
-
-					last_event_msg = pmsg->event;
-
-				}
-
-				if (pmsg->callback) pmsg->callback(pmsg->context);
-        	}
-
-        } else {
-            if (hao_.hqueue) {
-                vQueueDelete(hao_.hqueue);
-                hao_.hqueue = NULL;
-                LOGGER_INFO("UI: Cola destruida por falta de eventos");
-            }
-            ui_task_handle = NULL;
-            LOGGER_INFO("UI: Destruyendo tarea UI");
-            vTaskDelete(NULL);
-        }
-        vTaskDelay(pdMS_TO_TICKS(1));
+    if (uimsg->event != last) {
+      /* OFF anterior */
+      switch (last) {
+      case MSG_EVENT_BUTTON_PULSE:
+        ao_led_dispatch(&led_red,
+                        &(ao_led_message_t){.action = AO_LED_MESSAGE_OFF,
+                                            .callback = led_cb});
+        break;
+      case MSG_EVENT_BUTTON_SHORT:
+        ao_led_dispatch(&led_green,
+                        &(ao_led_message_t){.action = AO_LED_MESSAGE_OFF,
+                                            .callback = led_cb});
+        break;
+      case MSG_EVENT_BUTTON_LONG:
+        ao_led_dispatch(&led_blue,
+                        &(ao_led_message_t){.action = AO_LED_MESSAGE_OFF,
+                                            .callback = led_cb});
+        break;
+      default:
+        break;
+      }
+      /* ON nuevo */
+      switch (uimsg->event) {
+      case MSG_EVENT_BUTTON_PULSE:
+        ao_led_dispatch(&led_red,
+                        &(ao_led_message_t){.action = AO_LED_MESSAGE_ON,
+                                            .callback = led_cb});
+        break;
+      case MSG_EVENT_BUTTON_SHORT:
+        ao_led_dispatch(&led_green,
+                        &(ao_led_message_t){.action = AO_LED_MESSAGE_ON,
+                                            .callback = led_cb});
+        break;
+      case MSG_EVENT_BUTTON_LONG:
+        ao_led_dispatch(&led_blue,
+                        &(ao_led_message_t){.action = AO_LED_MESSAGE_ON,
+                                            .callback = led_cb});
+        break;
+      default:
+        break;
+      }
+      last = uimsg->event;
     }
+
+    if (uimsg->callback) {
+      uimsg->callback(uimsg->context);
+    }
+    vPortFree(uimsg);
+  }
 }
 
-
-bool ao_ui_send_event(ui_message_t* msg) {
-
-	if (hao_.hqueue == NULL) {
-        hao_.hqueue = xQueueCreate(1, sizeof(ui_message_t*));
-        if (!hao_.hqueue){
-        	return false;
-        }
-        LOGGER_INFO("UI: cola creadas dinámicamente");
-        BaseType_t status = xTaskCreate(task_ui, "task_ui", 256, NULL, tskIDLE_PRIORITY + 1, &ui_task_handle);
-        if (status != pdPASS) {
-            vQueueDelete(hao_.hqueue);
-            hao_.hqueue = NULL;
-            return false;
-        }
-        LOGGER_INFO("UI: tarea creada dinámicamente");
-    }
-    return (pdPASS == xQueueSend(hao_.hqueue, &msg, 0));
+bool ao_ui_send_event(ui_message_t *msg) {
+  return xQueueSend(q_reactor, &msg, portMAX_DELAY) == pdPASS;
 }
 
 void ao_ui_init(void) {
-    hao_.hqueue = NULL;
-    ui_task_handle = NULL;
+  q_reactor = xQueueCreate(QUEUE_LENGTH_, QUEUE_ITEM_SIZE_);
+  while (NULL == q_reactor) {
+    // error
+  }
+
+  BaseType_t status;
+  status = xTaskCreate(task_reactor, "task_reactor", 256, NULL,
+                       tskIDLE_PRIORITY + 1, NULL);
+  while (pdPASS != status) {
+    // error
+  }
 }
 
-void ao_ui_turOffLeds(void){
-    for (int i = 0; i < 3; ++i) {
-        ao_led_message_t* init_msg = pvPortMalloc(sizeof(ao_led_message_t));
-        if (init_msg) {
-            init_msg->id = 0;
-            init_msg->callback = led_cb;
-            init_msg->action = AO_LED_MESSAGE_OFF;
-            init_msg->value = 0;
-
-            switch (i) {
-                case 0: ao_led_send(&led_red, init_msg); break;
-                case 1: ao_led_send(&led_green, init_msg); break;
-                case 2: ao_led_send(&led_blue, init_msg); break;
-            }
-        }
-    }
-}
 /********************** end of file ******************************************/

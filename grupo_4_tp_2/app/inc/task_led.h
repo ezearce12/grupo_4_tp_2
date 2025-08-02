@@ -42,57 +42,60 @@ extern "C" {
 
 /********************** inclusions *******************************************/
 
-#include <stdio.h>
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 
-#include "main.h"
 #include "cmsis_os.h"
+#include "main.h"
 
 /********************** macros ***********************************************/
 
 /********************** typedef **********************************************/
 
-typedef enum
-{
+typedef enum {
   AO_LED_MESSAGE_ON,
   AO_LED_MESSAGE_OFF,
   AO_LED_MESSAGE_BLINK,
   AO_LED_MESSAGE__N,
 } ao_led_action_t;
 
-typedef void (*ao_led_cb_t)(void*);
+typedef void (*ao_led_cb_t)(void *);
 
-typedef struct
-{
-    int id;
-    ao_led_cb_t callback;
-    ao_led_action_t action;
-    int value;
+typedef struct {
+  int id;
+  ao_led_cb_t callback;
+  ao_led_action_t action;
+  int value;
+  void *context;
 } ao_led_message_t;
 
-typedef enum
-{
+typedef enum {
   AO_LED_COLOR_RED,
   AO_LED_COLOR_GREEN,
   AO_LED_COLOR_BLUE,
 } ao_led_color;
 
-typedef struct
-{
-    ao_led_color color;
-    QueueHandle_t hqueue;
+typedef struct {
+  ao_led_color color;
 } ao_led_handle_t;
 
 /********************** external data declaration ****************************/
 
 /********************** external functions declaration ***********************/
 
-void task_led(void* argument);
+/**
+ * @brief   Inicializa el handle (solo pone color y estado inicial)
+ */
+void ao_led_init(ao_led_handle_t *hao, ao_led_color color);
 
-bool ao_led_send(ao_led_handle_t* hao, ao_led_message_t* msg);
-
-void ao_led_init(ao_led_handle_t* hao, ao_led_color color);
+/**
+ * @brief   Despacha *sincrónicamente* un mensaje a este LED
+ *
+ * Este llamado enciende/apaga/parpadea el GPIO y llama al callback.
+ * Se usa desde el reactor, ¡no existe cola ni tarea propia!
+ */
+void ao_led_dispatch(ao_led_handle_t *hao, ao_led_message_t *msg);
 
 /********************** End of CPP guard *************************************/
 #ifdef __cplusplus
@@ -101,4 +104,3 @@ void ao_led_init(ao_led_handle_t* hao, ao_led_color color);
 
 #endif /* TASK_LED_H_ */
 /********************** end of file ******************************************/
-

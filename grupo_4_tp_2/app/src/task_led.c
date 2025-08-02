@@ -34,15 +34,15 @@
 
 /********************** inclusions *******************************************/
 
-#include <stdio.h>
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 
-#include "main.h"
-#include "cmsis_os.h"
 #include "board.h"
-#include "logger.h"
+#include "cmsis_os.h"
 #include "dwt.h"
+#include "logger.h"
+#include "main.h"
 
 #include <task_led.h>
 
@@ -57,11 +57,9 @@
 /********************** internal functions declaration ***********************/
 
 /********************** internal data definition *****************************/
-static const char* led_color_to_string[] = {
-    [AO_LED_COLOR_RED] = "Red",
-    [AO_LED_COLOR_GREEN] = "Green",
-    [AO_LED_COLOR_BLUE] = "Blue"
-};
+static const char *led_color_to_string[] = {[AO_LED_COLOR_RED] = "Red",
+                                            [AO_LED_COLOR_GREEN] = "Green",
+                                            [AO_LED_COLOR_BLUE] = "Blue"};
 
 /********************** external data definition *****************************/
 
@@ -72,71 +70,140 @@ static const char* led_color_to_string[] = {
 static TaskHandle_t led_task_handles[3] = { NULL, NULL, NULL };
 
 
-void task_led(void *argument) {
+void ao_led_dispatch(ao_led_handle_t *hao, ao_led_message_t *msg) {
+  uint16_t port = (hao->color == AO_LED_COLOR_RED)     ? LED_RED_PORT
+                  : (hao->color == AO_LED_COLOR_GREEN) ? LED_GREEN_PORT
+                                                       : LED_BLUE_PORT;
+  uint16_t pin = (hao->color == AO_LED_COLOR_RED)     ? LED_RED_PIN
+                 : (hao->color == AO_LED_COLOR_GREEN) ? LED_GREEN_PIN
+                                                      : LED_BLUE_PIN;
 
-	ao_led_handle_t* hao = (ao_led_handle_t*)argument;
+  switch (msg->action) {
+  case AO_LED_MESSAGE_ON:
+    LOGGER_INFO("Led %s ON", led_color_to_string[hao->color]);
+    HAL_GPIO_WritePin(port, pin, GPIO_PIN_SET);
+    break;
+  case AO_LED_MESSAGE_OFF:
+    LOGGER_INFO("Led %s OFF", led_color_to_string[hao->color]);
+    HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET);
+    break;
+  case AO_LED_MESSAGE_BLINK:
+    LOGGER_INFO("Led %s BLINK", led_color_to_string[hao->color]);
+    HAL_GPIO_WritePin(port, pin, GPIO_PIN_SET);
+    vTaskDelay(pdMS_TO_TICKS(msg->value));
+    HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET);
+    break;
+  default:
+    break;
+  }
 
-    while (true) {
+  if (msg->callback) {
+    msg->callback(msg->context);
+  }
 
-    	ao_led_message_t* msg;
-
-    	if (hao->hqueue && pdPASS == xQueueReceive(hao->hqueue, &msg, 0)) {
-            switch (msg->action) {
-                case AO_LED_MESSAGE_ON:
-                    LOGGER_INFO("Led %s ON", led_color_to_string[hao->color]);
-                    break;
-                case AO_LED_MESSAGE_OFF:
-                    LOGGER_INFO("Led %s OFF", led_color_to_string[hao->color]);
-                    break;
-                case AO_LED_MESSAGE_BLINK:
-                    LOGGER_INFO("Led %s BLINK", led_color_to_string[hao->color]);
-                    vTaskDelay(pdMS_TO_TICKS(msg->value));
-                    break;
-                default:
-                    break;
-            }
-            if (msg->callback) msg->callback(msg);
-        } else {
-            if (hao->hqueue) {
-                vQueueDelete(hao->hqueue);
-                hao->hqueue = NULL;
-                LOGGER_INFO("LED %s: cola destruida y tarea finalizada", led_color_to_string[hao->color]);
-            }
-            led_task_handles[hao->color] = NULL;
-            vTaskDelete(NULL);
-        }
-        vTaskDelay(pdMS_TO_TICKS(10));
-
-    }
+  vPortFree(msg);
+  LOGGER_INFO("AO Led %s - Memory released", led_color_to_string[hao->color]);
 }
 
-bool ao_led_send(ao_led_handle_t* hao, ao_led_message_t* msg) {
-    if (led_task_handles[hao->color] == NULL) {
-        hao->hqueue = xQueueCreate(QUEUE_LENGTH_, QUEUE_ITEM_SIZE_);
-        if (!hao->hqueue) return false;
-
-        LOGGER_INFO("LED %s: cola creada dinámicamente", led_color_to_string[hao->color]);
-
-        BaseType_t status = xTaskCreate(task_led, "task_led_dyn", 128, (void*)hao, tskIDLE_PRIORITY, &led_task_handles[hao->color]);
-        if (status != pdPASS) {
-
-            vQueueDelete(hao->hqueue);
-            hao->hqueue = NULL;
-
-            LOGGER_INFO("LED %s: error al crear tarea dinámica - Cola eliminada", led_color_to_string[hao->color]);
-
-            return false;
-        }
-        LOGGER_INFO("LED %s: tarea creadas dinámicamente", led_color_to_string[hao->color]);
-    }
-
-    if (!hao->hqueue) return false;
-    return (pdPASS == xQueueSend(hao->hqueue, &msg, 0));
+void ao_led_init(ao_led_handle_t *hao, ao_led_color color) {
+  hao->color = color;
 }
 
-void ao_led_init(ao_led_handle_t* hao, ao_led_color color) {
-    hao->color = color;
-    hao->hqueue = NULL;
-    led_task_handles[color] = NULL;
-}
+
+// void task_led(void *argument)
+//{
+//
+//	ao_led_handle_t* hao = (ao_led_handle_t*)argument;
+//
+//	LOGGER_INFO("Led %d init",hao->color);
+//
+//	TickType_t last_event_tick = xTaskGetTickCount();
+//     TickType_t timeout_ticks = pdMS_TO_TICKS(LED_INACTIVITY_TIMEOUT_MS_);
+//
+//	while (true)
+//	{
+////		ao_led_message_t msg;
+////		if (pdPASS == xQueueReceive(hao->hqueue, &msg, portMAX_DELAY))
+////		{
+////			switch (msg.action) {
+////			case AO_LED_MESSAGE_ON:
+////				LOGGER_INFO("Led %s on",
+/// led_color_to_string[hao->color]); /
+/// msg.callback(msg.id); /				break;
+////
+////			case AO_LED_MESSAGE_OFF:
+////				LOGGER_INFO("Led %s off",
+/// led_color_to_string[hao->color]); /
+/// msg.callback(msg.id); /				break;
+////
+////			case AO_LED_MESSAGE_BLINK:
+////				LOGGER_INFO("Led %s on",
+/// led_color_to_string[hao->color]); /
+/// vTaskDelay((TickType_t)((msg.value) / portTICK_PERIOD_MS)); /
+/// LOGGER_INFO("Led %s off", led_color_to_string[hao->color]); /
+/// msg.callback(msg.id); /				break;
+////
+////			default:
+////				break;
+////			}
+////		}
+//
+//		ao_led_message_t* msg;
+//		if (hao->hqueue && pdPASS == xQueueReceive(hao->hqueue, &msg,
+// pdMS_TO_TICKS(100))) { 			last_event_tick =
+// xTaskGetTickCount(); switch (msg->action) { case AO_LED_MESSAGE_ON:
+// LOGGER_INFO("Led %s ON", led_color_to_string[hao->color]);
+// break; 				case AO_LED_MESSAGE_OFF:
+//					LOGGER_INFO("Led %s OFF",
+// led_color_to_string[hao->color]); 					break;
+// case AO_LED_MESSAGE_BLINK: 					LOGGER_INFO("Led
+// %s BLINK", led_color_to_string[hao->color]);
+// vTaskDelay(pdMS_TO_TICKS(msg->value));
+// break; default: 					break;
+//			}
+//			if (msg->callback) msg->callback(msg);
+//		} else {
+//			if (hao->hqueue && (xTaskGetTickCount() -
+// last_event_tick > timeout_ticks)) {
+// vQueueDelete(hao->hqueue);
+// hao->hqueue = NULL; 				LOGGER_INFO("LED %s: recursos
+// liberados por inactividad", led_color_to_string[hao->color]);
+//			}
+//		}
+//	}
+//}
+
+// bool ao_led_send(ao_led_handle_t* hao, ao_led_message_t* msg)
+//{
+//   return (pdPASS == xQueueSend(hao->hqueue, (void*)msg, 0));
+// }
+
+// bool ao_led_send(ao_led_handle_t* hao, ao_led_message_t* msg) {
+//     if (!hao->hqueue) {
+//         hao->hqueue = xQueueCreate(QUEUE_LENGTH_, QUEUE_ITEM_SIZE_);
+//         if (!hao->hqueue) return false;
+//         LOGGER_INFO("LED %s: cola recreada",
+//         led_color_to_string[hao->color]);
+//     }
+//     return (pdPASS == xQueueSend(hao->hqueue, &msg, 0));
+// }
+//
+// void ao_led_init(ao_led_handle_t* hao, ao_led_color color)
+//{
+//   hao->color = color;
+//
+//   hao->hqueue = xQueueCreate(QUEUE_LENGTH_, QUEUE_ITEM_SIZE_);
+//   while(NULL == hao->hqueue)
+//   {
+//     // error
+//   }
+//
+//   BaseType_t status;
+//   status = xTaskCreate(task_led, "task_ao_led", 128, (void* const)hao,
+//   tskIDLE_PRIORITY, NULL); while (pdPASS != status)
+//   {
+//     // error
+//   }
+// }
+
 /********************** end of file ******************************************/
