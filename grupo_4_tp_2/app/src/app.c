@@ -46,17 +46,17 @@
 
 /********************** macros and definitions *******************************/
 
-
 /********************** internal data declaration ****************************/
 
 /********************** internal functions declaration ***********************/
 
 /********************** internal data definition *****************************/
 
+/********************** internal functions definition ***********************/
+
 /********************** external data declaration *****************************/
 
 ao_led_handle_t led_red, led_green, led_blue;
-
 
 /********************** external functions definition ************************/
 void app_init(void)
@@ -70,12 +70,11 @@ void app_init(void)
 
   BaseType_t status;
 
-  status = xTaskCreate(task_button, "task_button", 256, NULL, tskIDLE_PRIORITY, NULL);
-  while (pdPASS != status)
-  {
+  status = xTaskCreate(task_button, "task_button", 256, NULL, tskIDLE_PRIORITY,
+                       NULL);
+  while (pdPASS != status) {
     // error
   }
-
 
   LOGGER_INFO("app init");
 
