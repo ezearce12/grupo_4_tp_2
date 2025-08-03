@@ -67,11 +67,11 @@ static const char *led_color_to_string[] = {[AO_LED_COLOR_RED] = "Red",
 
 /********************** external functions definition ************************/
 
-static TaskHandle_t led_task_handles[3] = { NULL, NULL, NULL };
+//static TaskHandle_t led_task_handles[3] = { NULL, NULL, NULL };
 
 
 void ao_led_dispatch(ao_led_handle_t *hao, ao_led_message_t *msg) {
-  uint16_t port = (hao->color == AO_LED_COLOR_RED)     ? LED_RED_PORT
+  GPIO_TypeDef* port = (hao->color == AO_LED_COLOR_RED)     ? LED_RED_PORT
                   : (hao->color == AO_LED_COLOR_GREEN) ? LED_GREEN_PORT
                                                        : LED_BLUE_PORT;
   uint16_t pin = (hao->color == AO_LED_COLOR_RED)     ? LED_RED_PIN
