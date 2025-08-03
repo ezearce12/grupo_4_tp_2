@@ -57,7 +57,6 @@ typedef struct {
 /********************** internal functions declaration ***********************/
 
 /********************** internal data definition *****************************/
-static ao_ui_handle_t hao_;
 static QueueHandle_t q_reactor;
 /********************** external data definition *****************************/
 
@@ -168,4 +167,21 @@ void ao_ui_init(void) {
   }
 }
 
+//void ao_ui_turOffLeds(void){
+//    for (int i = 0; i < 3; ++i) {
+//        ao_led_message_t* init_msg = pvPortMalloc(sizeof(ao_led_message_t));
+//        if (init_msg) {
+//            init_msg->id = 0;
+//            init_msg->callback = led_cb;
+//            init_msg->action = AO_LED_MESSAGE_OFF;
+//            init_msg->value = 0;
+//
+//            switch (i) {
+//                case 0: ao_led_send(&led_red, init_msg); break;
+//                case 1: ao_led_send(&led_green, init_msg); break;
+//                case 2: ao_led_send(&led_blue, init_msg); break;
+//            }
+//        }
+//    }
+//}
 /********************** end of file ******************************************/
