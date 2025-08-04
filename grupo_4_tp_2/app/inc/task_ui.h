@@ -70,9 +70,6 @@ typedef struct {
 
 bool ao_ui_send_event(ui_message_t* msg);
 
-void ao_ui_init();
-void ao_ui_turOffLeds(void);
-
 /********************** End of CPP guard *************************************/
 #ifdef __cplusplus
 }
