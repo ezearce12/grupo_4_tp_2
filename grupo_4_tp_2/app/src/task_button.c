@@ -71,29 +71,28 @@ static struct { uint32_t counter; } button;
 
 static void button_init_(void) { button.counter = 0; }
 
-static button_type_t button_process_state_(bool value) {
-  button_type_t ret = BUTTON_TYPE_NONE;
-  if (value) {
+static msg_event_t button_process_state_(GPIO_PinState value) {
+  msg_event_t ret = MSG_EVENT_NONE;
+  if (GPIO_PIN_SET == value) {
     button.counter += BUTTON_PERIOD_MS_;
   } else {
     if (BUTTON_LONG_TIMEOUT_ <= button.counter) {
-      ret = BUTTON_TYPE_LONG;
+      ret = MSG_EVENT_BUTTON_LONG;
     } else if (BUTTON_SHORT_TIMEOUT_ <= button.counter) {
-      ret = BUTTON_TYPE_SHORT;
+      ret = MSG_EVENT_BUTTON_SHORT;
     } else if (BUTTON_PULSE_TIMEOUT_ <= button.counter) {
-      ret = BUTTON_TYPE_PULSE;
+      ret = MSG_EVENT_BUTTON_PULSE;
     }
     button.counter = 0;
   }
   return ret;
 }
-
-static void free_msg_callback(void *context) { vPortFree(context); }
+//
+// static void free_msg_callback(void *context) { vPortFree(context); }
 
 /********************** external functions definition ************************/
 
-
-void task_button(void* argument) {
+void task_button(void *argument) {
 
   LOGGER_INFO("button init");
 
@@ -101,14 +100,14 @@ void task_button(void* argument) {
 
   while (true) {
     GPIO_PinState button_state = HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN);
-    button_type_t button_type = button_process_state_(!button_state);
+    msg_event_t button_type = button_process_state_(!button_state);
 
-    if (button_type != BUTTON_TYPE_NONE) {
+    if (button_type != MSG_EVENT_NONE) {
       ui_message_t *pmsg = pvPortMalloc(sizeof(ui_message_t));
       if (pmsg != NULL) {
-        pmsg->event = (msg_event_t)button_type;
-        pmsg->callback = free_msg_callback;
-        pmsg->context = pmsg;
+        pmsg->event = button_type;
+        pmsg->callback = NULL;
+        pmsg->context = NULL;
 
         if (!ao_ui_send_event(pmsg)) {
           vPortFree(pmsg);

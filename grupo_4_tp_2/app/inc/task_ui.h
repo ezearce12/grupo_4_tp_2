@@ -51,7 +51,8 @@ extern "C" {
 /********************** typedef **********************************************/
 typedef enum
 {
-  MSG_EVENT_BUTTON_PULSE = 1,
+  MSG_EVENT_NONE = 0,
+  MSG_EVENT_BUTTON_PULSE,
   MSG_EVENT_BUTTON_SHORT,
   MSG_EVENT_BUTTON_LONG,
   MSG_EVENT__N,
@@ -66,10 +67,6 @@ typedef struct {
 /********************** external data declaration ****************************/
 
 /********************** external functions declaration ***********************/
-
-void task_ui(void* argument);
-
-extern TaskHandle_t ui_task_handle;
 
 bool ao_ui_send_event(ui_message_t* msg);
 

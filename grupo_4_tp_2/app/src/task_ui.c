@@ -48,8 +48,8 @@
 #include "task_ui.h"
 
 /********************** macros and definitions *******************************/
-#define QUEUE_LENGTH_            (1)
-#define QUEUE_ITEM_SIZE_         (sizeof(ui_message_t))
+#define QUEUE_LENGTH_ (4)
+#define QUEUE_ITEM_SIZE_ (sizeof(ui_message_t))
 /********************** internal data declaration ****************************/
 typedef struct {
   QueueHandle_t hqueue;
@@ -78,74 +78,65 @@ extern ao_led_handle_t led_blue;
 
 static void led_cb(void *context) {
 
-  vPortFree(context);
-  LOGGER_INFO("Memoria liberada desde led_callback");
+  //  (void *)context;
+  LOGGER_INFO(" led_callback");
+}
+
+static void send_led(ao_led_handle_t *h, ao_led_action_t a) {
+  ao_led_message_t *m = pvPortMalloc(sizeof *m);
+  if (!m)
+    return;
+  m->action = a;
+  m->value = 0;
+  m->callback = led_cb;
+  m->context = NULL;
+  ao_led_dispatch(h, m);
 }
 
 void task_reactor(void *arg) {
-  ui_message_t *uimsg;
-  msg_event_t last = MSG_EVENT__N;
+  ui_message_t *uim;
+  static msg_event_t last = MSG_EVENT_NONE;
 
-  /* arranque: LEDs OFF */
-  ao_led_dispatch(&led_red, &(ao_led_message_t){.action = AO_LED_MESSAGE_OFF,
-                                                .callback = led_cb});
-  ao_led_dispatch(&led_green, &(ao_led_message_t){.action = AO_LED_MESSAGE_OFF,
-                                                  .callback = led_cb});
-  ao_led_dispatch(&led_blue, &(ao_led_message_t){.action = AO_LED_MESSAGE_OFF,
-                                                 .callback = led_cb});
+  LOGGER_INFO("last value %d", last);
+
+  /* Apagar todo al arrancar */
+  send_led(&led_red, AO_LED_MESSAGE_OFF);
+  send_led(&led_green, AO_LED_MESSAGE_OFF);
+  send_led(&led_blue, AO_LED_MESSAGE_OFF);
 
   for (;;) {
-    if (pdPASS != xQueueReceive(q_reactor, &uimsg, portMAX_DELAY))
+    LOGGER_INFO("Reactor: waiting UI msg…");
+    if (xQueueReceive(q_reactor, &uim, portMAX_DELAY) != pdPASS)
       continue;
+    LOGGER_INFO("last value %d", last);
 
-    if (uimsg->event != last) {
-      /* OFF anterior */
-      switch (last) {
-      case MSG_EVENT_BUTTON_PULSE:
-        ao_led_dispatch(&led_red,
-                        &(ao_led_message_t){.action = AO_LED_MESSAGE_OFF,
-                                            .callback = led_cb});
-        break;
-      case MSG_EVENT_BUTTON_SHORT:
-        ao_led_dispatch(&led_green,
-                        &(ao_led_message_t){.action = AO_LED_MESSAGE_OFF,
-                                            .callback = led_cb});
-        break;
-      case MSG_EVENT_BUTTON_LONG:
-        ao_led_dispatch(&led_blue,
-                        &(ao_led_message_t){.action = AO_LED_MESSAGE_OFF,
-                                            .callback = led_cb});
-        break;
-      default:
-        break;
-      }
-      /* ON nuevo */
-      switch (uimsg->event) {
-      case MSG_EVENT_BUTTON_PULSE:
-        ao_led_dispatch(&led_red,
-                        &(ao_led_message_t){.action = AO_LED_MESSAGE_ON,
-                                            .callback = led_cb});
-        break;
-      case MSG_EVENT_BUTTON_SHORT:
-        ao_led_dispatch(&led_green,
-                        &(ao_led_message_t){.action = AO_LED_MESSAGE_ON,
-                                            .callback = led_cb});
-        break;
-      case MSG_EVENT_BUTTON_LONG:
-        ao_led_dispatch(&led_blue,
-                        &(ao_led_message_t){.action = AO_LED_MESSAGE_ON,
-                                            .callback = led_cb});
-        break;
-      default:
-        break;
-      }
-      last = uimsg->event;
+    LOGGER_INFO("Reactor: got UI event=%d  last=%d", uim->event, last);
+
+    /* Solo actuamos si cambió el tipo de evento */
+    if (uim->event != last) {
+      /* Apagar anterior */
+      if (last == MSG_EVENT_BUTTON_PULSE)
+        send_led(&led_red, AO_LED_MESSAGE_OFF);
+      if (last == MSG_EVENT_BUTTON_SHORT)
+        send_led(&led_green, AO_LED_MESSAGE_OFF);
+      if (last == MSG_EVENT_BUTTON_LONG)
+        send_led(&led_blue, AO_LED_MESSAGE_OFF);
+
+      /* Encender nuevo */
+      if (uim->event == MSG_EVENT_BUTTON_PULSE)
+        send_led(&led_red, AO_LED_MESSAGE_ON);
+      if (uim->event == MSG_EVENT_BUTTON_SHORT)
+        send_led(&led_green, AO_LED_MESSAGE_ON);
+      if (uim->event == MSG_EVENT_BUTTON_LONG)
+        send_led(&led_blue, AO_LED_MESSAGE_ON);
+
+      last = uim->event;
     }
 
-    if (uimsg->callback) {
-      uimsg->callback(uimsg->context);
-    }
-    vPortFree(uimsg);
+    /* Callback UI y libero mensaje */
+    if (uim->callback)
+      uim->callback(uim->context);
+    vPortFree(uim);
   }
 }
 
@@ -167,21 +158,21 @@ void ao_ui_init(void) {
   }
 }
 
-//void ao_ui_turOffLeds(void){
-//    for (int i = 0; i < 3; ++i) {
-//        ao_led_message_t* init_msg = pvPortMalloc(sizeof(ao_led_message_t));
-//        if (init_msg) {
-//            init_msg->id = 0;
-//            init_msg->callback = led_cb;
-//            init_msg->action = AO_LED_MESSAGE_OFF;
-//            init_msg->value = 0;
+// void ao_ui_turOffLeds(void){
+//     for (int i = 0; i < 3; ++i) {
+//         ao_led_message_t* init_msg = pvPortMalloc(sizeof(ao_led_message_t));
+//         if (init_msg) {
+//             init_msg->id = 0;
+//             init_msg->callback = led_cb;
+//             init_msg->action = AO_LED_MESSAGE_OFF;
+//             init_msg->value = 0;
 //
-//            switch (i) {
-//                case 0: ao_led_send(&led_red, init_msg); break;
-//                case 1: ao_led_send(&led_green, init_msg); break;
-//                case 2: ao_led_send(&led_blue, init_msg); break;
-//            }
-//        }
-//    }
-//}
+//             switch (i) {
+//                 case 0: ao_led_send(&led_red, init_msg); break;
+//                 case 1: ao_led_send(&led_green, init_msg); break;
+//                 case 2: ao_led_send(&led_blue, init_msg); break;
+//             }
+//         }
+//     }
+// }
 /********************** end of file ******************************************/
