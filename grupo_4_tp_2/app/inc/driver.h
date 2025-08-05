@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Sebastian Bedin <sebabedin@gmail.com>.
+ * Copyright (c) 2024 Sebastian Bedin <sebabedin@gmail.com>.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,37 +29,50 @@
  * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
+ *
+ * @file   : driver.c
+ * @date   : Feb 17, 2023
  * @author : Sebastian Bedin <sebabedin@gmail.com>
+ * @version	v1.0.0
  */
 
 /********************** inclusions *******************************************/
 
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-
-#include "board.h"
-#include "cmsis_os.h"
-#include "dwt.h"
-#include "logger.h"
 #include "main.h"
-
-#include <task_led.h>
+#include "cmsis_os.h"
 
 /********************** macros and definitions *******************************/
 
-#define TASK_PERIOD_MS_ (1000)
-#define QUEUE_LENGTH_ (1)
-#define QUEUE_ITEM_SIZE_ (sizeof(ao_led_message_t))
-
 /********************** internal data declaration ****************************/
+
+typedef enum
+{
+  DRIVER_GPIO_LEDR,
+  DRIVER_GPIO_LEDG,
+  DRIVER_GPIO_LEDB,
+  DRIVER_GPIO_SW,
+  DRIVER_GPIO__CNT,
+} driver_gpio_idx_t;
+
+typedef struct
+{
+  eboard_gpio_idx_t idx;
+  GPIO_TypeDef *GPIOx;
+  uint16_t GPIO_Pin;
+} driver_gpio_descriptor_t_;
 
 /********************** internal functions declaration ***********************/
 
 /********************** internal data definition *****************************/
-static const char *led_color_to_string[] = {[AO_LED_COLOR_RED] = "Red",
-                                            [AO_LED_COLOR_GREEN] = "Green",
-                                            [AO_LED_COLOR_BLUE] = "Blue"};
+
+static driver_gpio_descriptor_t_ driver_gpios_[] = { {idx: EBOARD_GPIO_LEDR, GPIOx: GPIOB, GPIO_Pin: GPIO_PIN_14}, // LED3
+    {idx: EBOARD_GPIO_LEDG, GPIOx: GPIOB, GPIO_Pin: GPIO_PIN_0}, // LED1
+    {idx: EBOARD_GPIO_LEDB, GPIOx: GPIOB, GPIO_Pin: GPIO_PIN_7}, // LED2
+    {idx: EBOARD_GPIO_SW, GPIOx: GPIOC, GPIO_Pin: GPIO_PIN_13}, // USER BTN
+    };
+
+extern UART_HandleTypeDef huart3;
+UART_HandleTypeDef *p_huart_selected_ = &huart3;
 
 /********************** external data definition *****************************/
 
@@ -67,45 +80,53 @@ static const char *led_color_to_string[] = {[AO_LED_COLOR_RED] = "Red",
 
 /********************** external functions definition ************************/
 
-// static TaskHandle_t led_task_handles[3] = { NULL, NULL, NULL };
-
-void ao_led_dispatch(ao_led_handle_t *hao, ao_led_message_t *msg) {
-  GPIO_TypeDef *port = (hao->color == AO_LED_COLOR_RED)     ? LED_RED_PORT
-                       : (hao->color == AO_LED_COLOR_GREEN) ? LED_GREEN_PORT
-                                                            : LED_BLUE_PORT;
-  uint16_t pin = (hao->color == AO_LED_COLOR_RED)     ? LED_RED_PIN
-                 : (hao->color == AO_LED_COLOR_GREEN) ? LED_GREEN_PIN
-                                                      : LED_BLUE_PIN;
-
-  switch (msg->action) {
-  case AO_LED_MESSAGE_ON:
-    LOGGER_INFO("Led %s ON", led_color_to_string[hao->color]);
-    HAL_GPIO_WritePin(port, pin, GPIO_PIN_SET);
-    break;
-  case AO_LED_MESSAGE_OFF:
-    LOGGER_INFO("Led %s OFF", led_color_to_string[hao->color]);
-    HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET);
-    break;
-  case AO_LED_MESSAGE_BLINK:
-    LOGGER_INFO("Led %s BLINK", led_color_to_string[hao->color]);
-    HAL_GPIO_WritePin(port, pin, GPIO_PIN_SET);
-    vTaskDelay(pdMS_TO_TICKS(msg->value));
-    HAL_GPIO_WritePin(port, pin, GPIO_PIN_RESET);
-    break;
-  default:
-    break;
-  }
-
-  if (msg->callback) {
-    msg->callback(msg->context);
-  }
-
-  vPortFree(msg);
-  LOGGER_INFO("AO Led %s - Memory released", led_color_to_string[hao->color]);
+void euart_hal_receive(void *phardware_handle, uint8_t *pbuffer, size_t size)
+{
+  HAL_UARTEx_ReceiveToIdle_IT((UART_HandleTypeDef*)phardware_handle, pbuffer, size);
 }
 
-void ao_led_init(ao_led_handle_t *hao, ao_led_color color) {
-  hao->color = color;
+void euart_hal_send(void *phardware_handle, uint8_t *pbuffer, size_t size)
+{
+  HAL_UART_Transmit_IT((UART_HandleTypeDef*)phardware_handle, pbuffer, size);
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  eboard_hal_port_uart_error((void*)huart);
+  // TODO: ¿?
+}
+
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size)
+{
+  eboard_hal_port_uart_rx_irq((void*)huart, size);
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  eboard_hal_port_uart_tx_irq((void*)huart);
+}
+
+void eboard_hal_port_gpio_write(void *handle, bool value)
+{
+  driver_gpio_descriptor_t_ *hgpio = (driver_gpio_descriptor_t_*)handle;
+  HAL_GPIO_WritePin(hgpio->GPIOx, hgpio->GPIO_Pin, value ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+bool eboard_hal_port_gpio_read(void *handle)
+{
+  driver_gpio_descriptor_t_ *hgpio = (driver_gpio_descriptor_t_*)handle;
+  GPIO_PinState state = HAL_GPIO_ReadPin(hgpio->GPIOx, hgpio->GPIO_Pin);
+  return (GPIO_PIN_SET == state);
+}
+
+uint32_t eboard_osal_port_get_time(void)
+{
+  return (uint32_t)xTaskGetTickCount();
+}
+
+void eboard_osal_port_delay(uint32_t time_ms)
+{
+  vTaskDelay((TickType_t)((time_ms) / portTICK_PERIOD_MS));
 }
 
 /********************** end of file ******************************************/

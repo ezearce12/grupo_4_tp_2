@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Sebastian Bedin <sebabedin@gmail.com>.
+ * Copyright (c) 2024 Sebastian Bedin <sebabedin@gmail.com>.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,10 @@
  * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
+ * @file   : task_button.h
+ * @date   : Feb 17, 2023
  * @author : Sebastian Bedin <sebabedin@gmail.com>
+ * @version	v1.0.0
  */
 
 #ifndef TASK_BUTTTON_H_
@@ -45,14 +48,7 @@ extern "C" {
 /********************** macros ***********************************************/
 
 /********************** typedef **********************************************/
-typedef enum
-{
-  BUTTON_TYPE_NONE,
-  BUTTON_TYPE_PULSE,
-  BUTTON_TYPE_SHORT,
-  BUTTON_TYPE_LONG,
-  BUTTON_TYPE__N,
-} button_type_t;
+
 /********************** external data declaration ****************************/
 
 /********************** external functions declaration ***********************/

@@ -30,7 +30,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  *
  *
- * @file   : logger.c
+ * @file   : ao_led.c
+ * @date   : Feb 17, 2023
  * @author : Sebastian Bedin <sebabedin@gmail.com>
  * @version	v1.0.0
  */
@@ -40,42 +41,89 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <string.h>
 
 #include "main.h"
 #include "cmsis_os.h"
-
+#include "board.h"
 #include "logger.h"
+#include "dwt.h"
+
+#include <ao_led.h>
 
 /********************** macros and definitions *******************************/
 
+#define TASK_PERIOD_MS_           (1000)
+
+#define QUEUE_LENGTH_            (1)
+#define QUEUE_ITEM_SIZE_         (sizeof(ao_event_t))
+
 /********************** internal data declaration ****************************/
+
+typedef struct
+{
+	ao_led_handle_t* hao;
+	ao_led_message_t msg;
+	QueueHandle_t hqueue;
+} ao_led_handle_t;
 
 /********************** internal functions declaration ***********************/
 
 /********************** internal data definition *****************************/
 
-/********************** external data definition *****************************/
+static GPIO_TypeDef* led_port_[] = {LED_RED_PORT, LED_GREEN_PORT,  LED_BLUE_PORT};
+static uint16_t led_pin_[] = {LED_RED_PIN,  LED_GREEN_PIN, LED_BLUE_PIN };
 
-static char logger_msg_buffer_[LOGGER_CONFIG_MAXLEN];
-char* const logger_msg = logger_msg_buffer_;
-int logger_msg_len;
+/********************** external data definition *****************************/
 
 /********************** internal functions definition ************************/
 
+static void task_(void *argument)
+{
+  while (true)
+  {
+    ao_event_t event;
+    if (pdPASS == xQueueReceive(hqueue_, &event, portMAX_DELAY))
+    {
+      ao_led_handle_t* hao = event.hao;
+      ao_led_message_t msg = event.msg;
+      switch (msg.action) {
+        case AO_LED_MESSAGE_ON:
+
+          break;
+
+        case AO_LED_MESSAGE_OFF:
+
+          break;
+
+        case AO_LED_MESSAGE_BLINK:
+
+          break;
+
+        default:
+          break;
+      }
+    }
+  }
+}
+
 /********************** external functions definition ************************/
 
-#if 1 == LOGGER_CONFIG_USE_SEMIHOSTING
-void logger_log_print_(char* const msg)
+bool ao_led_send(ao_led_handle_t* hao, ao_led_message_t* pmsg)
 {
-	printf(msg);
-	fflush(stdout);
+	if (NULL == hao->hqueue)
+	{
+		hao->hqueue = xQueueCreate(QUEUE_LENGTH_, sizeof(ao_led_message_t*));
+		if (hao->hqueue == NULL) return false;
+
+		if (xTaskCreate(task_, "task_led", 128, (void*)hao, tskIDLE_PRIORITY, NULL) != pdPASS)
+		{
+			vQueueDelete(hao->hqueue);
+			hao->hqueue = NULL;
+			return false;
+		}
+	}
+
+	return (pdPASS == xQueueSend(hao->hqueue, &pmsg, 0));
 }
-#else
-void logger_log_print_(char* const msg)
-{
-    return;
-}
-#endif
 
 /********************** end of file ******************************************/

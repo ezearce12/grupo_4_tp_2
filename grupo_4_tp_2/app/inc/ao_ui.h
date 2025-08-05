@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Sebastian Bedin <sebabedin@gmail.com>.
+ * Copyright (c) 2024 Sebastian Bedin <sebabedin@gmail.com>.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,11 +29,14 @@
  * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
+ * @file   : task_button.h
+ * @date   : Feb 17, 2023
  * @author : Sebastian Bedin <sebabedin@gmail.com>
+ * @version	v1.0.0
  */
 
-#ifndef TASK_LED_H_
-#define TASK_LED_H_
+#ifndef TASK_UI_H_
+#define TASK_UI_H_
 
 /********************** CPP guard ********************************************/
 #ifdef __cplusplus
@@ -42,65 +45,45 @@ extern "C" {
 
 /********************** inclusions *******************************************/
 
-#include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
 
-#include "cmsis_os.h"
 #include "main.h"
+#include "cmsis_os.h"
 
 /********************** macros ***********************************************/
 
 /********************** typedef **********************************************/
 
-typedef enum {
-  AO_LED_MESSAGE_ON,
-  AO_LED_MESSAGE_OFF,
-  AO_LED_MESSAGE_BLINK,
-  AO_LED_MESSAGE__N,
-} ao_led_action_t;
+typedef enum
+{
+  MSG_EVENT_BUTTON_NONE,
+  MSG_EVENT_BUTTON_PULSE,
+  MSG_EVENT_BUTTON_SHORT,
+  MSG_EVENT_BUTTON_LONG,
+  MSG_EVENT__N,
+} ao_ui_action_t;
 
-typedef void (*ao_led_cb_t)(void *);
+typedef void (*ao_ui_cb_t)(void*);
 
-typedef struct {
-  int id;
-  ao_led_cb_t callback;
-  ao_led_action_t action;
-  int value;
-  void *context;
-} ao_led_message_t;
-
-typedef enum {
-  AO_LED_COLOR_RED,
-  AO_LED_COLOR_GREEN,
-  AO_LED_COLOR_BLUE,
-} ao_led_color;
-
-typedef struct {
-  ao_led_color color;
-} ao_led_handle_t;
+typedef struct
+{
+    ao_ui_cb_t callback;
+    ao_ui_action_t action;
+} ao_ui_message_t;
 
 /********************** external data declaration ****************************/
 
 /********************** external functions declaration ***********************/
 
-/**
- * @brief   Inicializa el handle (solo pone color y estado inicial)
- */
-void ao_led_init(ao_led_handle_t *hao, ao_led_color color);
-
-/**
- * @brief   Despacha *sincrónicamente* un mensaje a este LED
- *
- * Este llamado enciende/apaga/parpadea el GPIO y llama al callback.
- * Se usa desde el reactor, ¡no existe cola ni tarea propia!
- */
-void ao_led_dispatch(ao_led_handle_t *hao, ao_led_message_t *msg);
+bool ao_ui_send_event(ao_ui_message_t *pmsg);
 
 /********************** End of CPP guard *************************************/
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* TASK_LED_H_ */
+#endif /* TASK_UI_H_ */
 /********************** end of file ******************************************/
+

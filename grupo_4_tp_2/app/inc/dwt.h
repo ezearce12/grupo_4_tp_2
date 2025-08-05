@@ -99,7 +99,7 @@ extern "C" {
  *
  *  														// => ______
  *
- *  DEBUGOUT("Cycles: %lu - Time %lu uS\r\n", cycle_counter, cycle_counter_time_us);
+ *  LOGGER_LOG("Cycles: %lu - Time %lu uS\r\n", cycle_counter, cycle_counter_time_us);
  */
 
 /********************** macros ***********************************************/

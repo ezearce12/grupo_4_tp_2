@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Sebastian Bedin <sebabedin@gmail.com>.
+ * Copyright (c) 2024 Sebastian Bedin <sebabedin@gmail.com>.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,31 +29,35 @@
  * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
+ *
+ * @file   : task_button.c
+ * @date   : Feb 17, 2023
  * @author : Sebastian Bedin <sebabedin@gmail.com>
+ * @version	v1.0.0
  */
 
 /********************** inclusions *******************************************/
 
-#include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
 
-#include "board.h"
-#include "cmsis_os.h"
-#include "dwt.h"
-#include "logger.h"
 #include "main.h"
-#include "task_button.h"
-#include "task_ui.h"
+#include "cmsis_os.h"
+#include "board.h"
+#include "logger.h"
+#include "dwt.h"
+
+#include "ao_ui.h"
 
 /********************** macros and definitions *******************************/
 
-#define TASK_PERIOD_MS_ (50)
+#define TASK_PERIOD_MS_           (50)
 
-#define BUTTON_PERIOD_MS_ (TASK_PERIOD_MS_)
-#define BUTTON_PULSE_TIMEOUT_ (200)
-#define BUTTON_SHORT_TIMEOUT_ (1000)
-#define BUTTON_LONG_TIMEOUT_ (2000)
+#define BUTTON_PERIOD_MS_         (TASK_PERIOD_MS_)
+#define BUTTON_PULSE_TIMEOUT_     (200)
+#define BUTTON_SHORT_TIMEOUT_     (1000)
+#define BUTTON_LONG_TIMEOUT_      (2000)
 
 /********************** internal data declaration ****************************/
 
@@ -63,60 +67,99 @@
 
 /********************** external data definition *****************************/
 
-extern SemaphoreHandle_t hsem_button;
+extern QueueHandle_t hqueue;
 
 /********************** internal functions definition ************************/
 
-static struct { uint32_t counter; } button;
+typedef enum
+{
+  BUTTON_TYPE_NONE,
+  BUTTON_TYPE_PULSE,
+  BUTTON_TYPE_SHORT,
+  BUTTON_TYPE_LONG,
+  BUTTON_TYPE__N,
+} button_type_t;
 
-static void button_init_(void) { button.counter = 0; }
+static struct
+{
+    uint32_t counter;
+} button;
 
-static msg_event_t button_process_state_(GPIO_PinState value) {
-  msg_event_t ret = MSG_EVENT_NONE;
-  if (GPIO_PIN_SET == value) {
+static void button_init_(void)
+{
+  button.counter = 0;
+}
+
+static button_type_t button_process_state_(bool value)
+{
+  button_type_t ret = BUTTON_TYPE_NONE;
+  if(value)
+  {
     button.counter += BUTTON_PERIOD_MS_;
-  } else {
-    if (BUTTON_LONG_TIMEOUT_ <= button.counter) {
-      ret = MSG_EVENT_BUTTON_LONG;
-    } else if (BUTTON_SHORT_TIMEOUT_ <= button.counter) {
-      ret = MSG_EVENT_BUTTON_SHORT;
-    } else if (BUTTON_PULSE_TIMEOUT_ <= button.counter) {
-      ret = MSG_EVENT_BUTTON_PULSE;
+  }
+  else
+  {
+    if(BUTTON_LONG_TIMEOUT_ <= button.counter)
+    {
+      ret = BUTTON_TYPE_LONG;
+    }
+    else if(BUTTON_SHORT_TIMEOUT_ <= button.counter)
+    {
+      ret = BUTTON_TYPE_SHORT;
+    }
+    else if(BUTTON_PULSE_TIMEOUT_ <= button.counter)
+    {
+      ret = BUTTON_TYPE_PULSE;
     }
     button.counter = 0;
   }
   return ret;
 }
-//
-// static void free_msg_callback(void *context) { vPortFree(context); }
+
+static void callback_task_button(void *pmsg)
+{
+	vPortFree(pmsg);
+}
 
 /********************** external functions definition ************************/
 
-void task_button(void *argument) {
+void task_button(void* argument)
+{
+	button_init_();
 
-  LOGGER_INFO("button init");
+	while(true)
+	{
+		GPIO_PinState button_state;
+		button_state = HAL_GPIO_ReadPin(BTN_PORT, BTN_PIN);
 
-  button_init_();
+		button_type_t button_type;
+		button_type = button_process_state_(button_state);
 
-  while (true) {
-    GPIO_PinState button_state = HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN);
-    msg_event_t button_type = button_process_state_(!button_state);
+		switch (button_type) {
+			case BUTTON_TYPE_NONE:
+				break;
+			case BUTTON_TYPE_PULSE:
+			case BUTTON_TYPE_SHORT:
+			case BUTTON_TYPE_LONG:
+				ao_ui_message_t* pmsg = (ao_ui_message_t*)pvPortMalloc(sizeof(ao_ui_message_t));
+				if (NULL != pmsg)
+				{
+					pmsg->action = (ao_ui_action_t)button_type;
+					pmsg->callback = callback_task_button;
 
-    if (button_type != MSG_EVENT_NONE) {
-      ui_message_t *pmsg = pvPortMalloc(sizeof(ui_message_t));
-      if (pmsg != NULL) {
-        pmsg->event = button_type;
-        pmsg->callback = NULL;
-        pmsg->context = NULL;
+					if (!ao_ui_send_event(pmsg))
+					{
+						vPortFree(pmsg);
+					}
+				}
+				break;
+			default:
+				LOGGER_INFO("button error");
+				break;
+		}
 
-        if (!ao_ui_send_event(pmsg)) {
-          vPortFree(pmsg);
-        }
-      }
-    }
-
-    vTaskDelay(pdMS_TO_TICKS(TASK_PERIOD_MS_));
-  }
+		vTaskDelay((TickType_t)(TASK_PERIOD_MS_ / portTICK_PERIOD_MS));
+	}
 }
 
 /********************** end of file ******************************************/
