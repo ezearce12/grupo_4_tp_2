@@ -77,6 +77,7 @@ typedef struct
 
 /********************** external functions declaration ***********************/
 
+void task_ui(void);
 bool ao_ui_send_event(ao_ui_message_t *pmsg);
 
 /********************** End of CPP guard *************************************/

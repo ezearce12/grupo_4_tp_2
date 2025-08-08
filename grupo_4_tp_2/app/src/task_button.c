@@ -158,7 +158,7 @@ void task_button(void* argument)
 				break;
 		}
 
-		vTaskDelay((TickType_t)(TASK_PERIOD_MS_ / portTICK_PERIOD_MS));
+		vTaskDelay(pdMS_TO_TICKS(TASK_PERIOD_MS_));
 	}
 }
 

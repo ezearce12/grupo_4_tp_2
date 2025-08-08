@@ -49,8 +49,6 @@
 #include "board.h"
 
 #include "task_button.h"
-#include "ao_ui.h"
-#include "ao_led.h"
 
 /********************** macros and definitions *******************************/
 
@@ -62,8 +60,6 @@
 /********************** internal data definition *****************************/
 
 /********************** external data declaration *****************************/
-
-ao_led_handle_t led_red, led_green, led_blue;
 
 /********************** external functions definition ************************/
 void app_init(void)

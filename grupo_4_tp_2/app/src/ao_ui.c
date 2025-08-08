@@ -52,10 +52,10 @@
 #include "ao_led.h"
 
 /********************** macros and definitions *******************************/
+#define UI_IDLE_TIMEOUT_MS_		 (3000)
 
-#define QUEUE_LENGTH_            (1)
+#define QUEUE_LENGTH_            (5)
 #define QUEUE_ITEM_SIZE_         (sizeof(ao_ui_message_t*))
-#define UI_IDLE_TIMEOUT_MS_		 (1000)
 
 /********************** internal data declaration ****************************/
 
@@ -73,25 +73,22 @@ typedef enum {
 
 
 /********************** internal functions declaration ***********************/
+static void queue_ui_delete(void);
 
 /********************** internal data definition *****************************/
-
-static ao_ui_handle_t hao_ui;
+static ao_ui_handle_t hao_ui = {.hqueue = NULL};
 
 /********************** external data definition *****************************/
-
-extern ao_led_handle_t led_red;
-extern ao_led_handle_t led_green;
-extern ao_led_handle_t led_blue;
+extern ao_led_handle_t hao_led;
 
 /********************** internal functions definition ************************/
 
-static void callback_task_ui(int id)
+static void callback_task_ui(void *pmsg)
 {
-  LOGGER_INFO("callback: %d", id);
+	vPortFree(pmsg);
 }
 
-static void task_ui(void *argument)
+void task_ui(void)
 {
 	static ui_state_t current_state = UI_STATE_STANDBY;
 
@@ -100,80 +97,99 @@ static void task_ui(void *argument)
 		ao_ui_message_t *pmsg;
 		if (pdPASS == xQueueReceive(hao_ui.hqueue, &pmsg, pdMS_TO_TICKS(UI_IDLE_TIMEOUT_MS_)))
 		{
+			// 1) Evento -> próximo estado
 			ui_state_t next_state = current_state;
-			ao_led_handle_t* target_led = NULL;
-
-			switch (pmsg->action)
-			{
+			switch (pmsg->action) {
 			case MSG_EVENT_BUTTON_PULSE:
 				next_state = UI_STATE_RED;
-				target_led = &led_red;
 				break;
 			case MSG_EVENT_BUTTON_SHORT:
 				next_state = UI_STATE_GREEN;
-				target_led = &led_green;
 				break;
 			case MSG_EVENT_BUTTON_LONG:
 				next_state = UI_STATE_BLUE;
-				target_led = &led_blue;
 				break;
 			default:
 				break;
 			}
 
+			// 2) Si cambio el estado: apagar el LED del estado actual
 			if (next_state != current_state)
 			{
-				// Apagar el LED anterior
 				switch (current_state)
 				{
+				case UI_STATE_STANDBY:
+					break;
 				case UI_STATE_RED:
-					ao_led_send(&led_red, &(ao_led_message_t){.action = AO_LED_MESSAGE_OFF, .callback = NULL}); break;
-				case UI_STATE_GREEN: ao_led_send(&led_green, &(ao_led_message_t){.action = AO_LED_MESSAGE_OFF, .callback = NULL}); break;
-				case UI_STATE_BLUE:  ao_led_send(&led_blue, &(ao_led_message_t){.action = AO_LED_MESSAGE_OFF, .callback = NULL}); break;
-				default: break;
-				}
-
-				// Encender el nuevo LED
-				if (target_led != NULL)
-				{
-					ao_led_message_t* pmsg_led = pvPortMalloc(sizeof(ao_led_message_t));
-					if (NULL != pmsg_led)
+				case UI_STATE_GREEN:
+				case UI_STATE_BLUE:
+					ao_led_message_t *pmsg_led_off = (ao_led_message_t*)pvPortMalloc(sizeof(*ao_led_message_t));
+					if (NULL != pmsg_led_off)
 					{
-						pmsg_led->action = AO_LED_MESSAGE_ON;
-						pmsg->callback = callback_task_ui;
-
-						if (!ao_led_send(target_led, pmsg_led))
+						pmsg_led_off->action   = AO_LED_MESSAGE_OFF;
+						pmsg_led_off->callback = callback_task_ui;
+						ao_led_handle_t *hao =	(current_state == UI_STATE_RED)   ? &hao_led[AO_LED_COLOR_RED]:
+												(current_state == UI_STATE_GREEN) ? &hao_led[AO_LED_COLOR_GREEN]:
+																					&hao_led[AO_LED_COLOR_BLUE];
+						if (!ao_led_send_event(hao, pmsg_led_off))
 						{
-							vPortFree(pmsg_led);
+							vPortFree(pmsg_led_off);
 						}
 					}
-					else
+					break;
+				default:
+					break;
+				}
+			}
+
+			// 3) Encender el LED del nuevo estado
+			switch (next_state)
+			{
+			case UI_STATE_STANDBY:
+				break;
+			case UI_STATE_RED:
+			case UI_STATE_GREEN:
+			case UI_STATE_BLUE:
+				ao_led_message_t *pmsg_led_on = (ao_led_message_t*)pvPortMalloc(sizeof(*ao_led_message_t));
+				if (NULL != pmsg_led_on)
+				{
+					pmsg_led_on->action   = AO_LED_MESSAGE_ON;
+					pmsg_led_on->callback = callback_task_ui;
+					ao_led_handle_t *hao =	(next_state == UI_STATE_RED)   ? &hao_led[AO_LED_COLOR_RED]   :
+											(next_state == UI_STATE_GREEN) ? &hao_led[AO_LED_COLOR_GREEN] :
+																			 &hao_led[AO_LED_COLOR_BLUE];
+					if (!ao_led_send_event(hao, pmsg_led_on))
 					{
-						if (pmsg->callback) pmsg->callback(pmsg);
+						vPortFree(pmsg_led_on);
 					}
 				}
+				break;
 
-				current_state = next_state;
+			default:
+				break;
 			}
-			else
+
+			// 4) Transicionar
+			current_state = next_state;
+
+			// 5) Liberar memoria del mensaje
+			if(pmsg->callback)
 			{
-				if (pmsg->callback)
-				{
-					pmsg->callback(pmsg);
-				}
+				pmsg->callback;
 			}
+
 		}
-		else
+
+		else	// Si luego de un tiempo UI_IDLE_TIMEOUT_MS_ no recibo eventos, elimino las colas y la tarea.
 		{
-			vQueueDelete(hao_ui.hqueue);
-			hao_ui.hqueue = NULL;
-			vTaskDelete(NULL);
+			for(uint8_t i = 0; i < AO_LED_COLOR__N; i++) queue_led_delete(&hao_led[i]);	// Elimino cola de LEDs
+			queue_ui_delete();															// Elimino cola de ui
+			vTaskDelete(NULL);															// Elimino tarea
 		}
 	}
 }
 
-
-/********************** external functions PULSEdefinition ************************/
+/********************** external functions definition ************************/
 
 bool ao_ui_send_event(ao_ui_message_t *pmsg)
 {
@@ -187,7 +203,7 @@ bool ao_ui_send_event(ao_ui_message_t *pmsg)
 		}
 
 		BaseType_t status;
-		status = xTaskCreate(task_ui, "task_ao_ui", 128, NULL, tskIDLE_PRIORITY, NULL);
+		status = xTaskCreate(task_ui, "task_ui", 128, NULL, tskIDLE_PRIORITY, NULL);
 		if (pdPASS != status)
 		{
 			// error
@@ -197,8 +213,19 @@ bool ao_ui_send_event(ao_ui_message_t *pmsg)
 		}
 	}
 
-
 	return (pdPASS == xQueueSend(hao_ui.hqueue, (void*)&pmsg, 0));
 }
 
-/********************** end of file ******************************************/
+static void queue_ui_delete(void)
+{
+	if(NULL != hao_ui.hqueue)
+	{
+		ao_ui_message_t *pmsg;
+		while(pdPASS == xQueueReceive(hao_ui.hqueue, (void*)&pmsg, 0))
+		{
+			vPortFree(pmsg);
+		}
+		vQueueDelete(hao_ui.hqueue);
+		hao_ui.hqueue = NULL;
+	}
+}

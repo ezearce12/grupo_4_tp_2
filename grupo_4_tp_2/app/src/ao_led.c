@@ -52,78 +52,93 @@
 
 /********************** macros and definitions *******************************/
 
-#define TASK_PERIOD_MS_           (1000)
-
-#define QUEUE_LENGTH_            (1)
-#define QUEUE_ITEM_SIZE_         (sizeof(ao_event_t))
+#define QUEUE_LENGTH_            (10)
+#define QUEUE_ITEM_SIZE_         (sizeof(ao_led_message_t*))
 
 /********************** internal data declaration ****************************/
-
-typedef struct
-{
-	ao_led_handle_t* hao;
-	ao_led_message_t msg;
-	QueueHandle_t hqueue;
-} ao_led_handle_t;
 
 /********************** internal functions declaration ***********************/
 
 /********************** internal data definition *****************************/
 
 static GPIO_TypeDef* led_port_[] = {LED_RED_PORT, LED_GREEN_PORT,  LED_BLUE_PORT};
-static uint16_t led_pin_[] = {LED_RED_PIN,  LED_GREEN_PIN, LED_BLUE_PIN };
+static uint16_t      led_pin_[]  = {LED_RED_PIN,  LED_GREEN_PIN,   LED_BLUE_PIN };
+
+ao_led_handle_t hao_red   = {.color = AO_LED_COLOR_RED,  .hqueue = NULL};
+ao_led_handle_t hao_green = {.color = AO_LED_COLOR_GREEN,.hqueue = NULL};
+ao_led_handle_t hao_blue  = {.color = AO_LED_COLOR_BLUE, .hqueue = NULL};
+
+ao_led_handle_t hao_led[AO_LED_COLOR__N] = {hao_red, hao_green, hao_blue};
 
 /********************** external data definition *****************************/
 
 /********************** internal functions definition ************************/
-
-static void task_(void *argument)
+static void turn_on_led(ao_led_handle_t* hao)
 {
-  while (true)
-  {
-    ao_event_t event;
-    if (pdPASS == xQueueReceive(hqueue_, &event, portMAX_DELAY))
-    {
-      ao_led_handle_t* hao = event.hao;
-      ao_led_message_t msg = event.msg;
-      switch (msg.action) {
-        case AO_LED_MESSAGE_ON:
+	HAL_GPIO_WritePin(led_port_[hao->color], led_pin_[hao->color], SET);
+}
 
-          break;
-
-        case AO_LED_MESSAGE_OFF:
-
-          break;
-
-        case AO_LED_MESSAGE_BLINK:
-
-          break;
-
-        default:
-          break;
-      }
-    }
-  }
+static void turn_off_led(ao_led_handle_t* hao)
+{
+	HAL_GPIO_WritePin(led_port_[hao->color], led_pin_[hao->color], RESET);
 }
 
 /********************** external functions definition ************************/
+void process_ao_led(ao_led_handle_t* hao)
+{
+	ao_led_message_t* pmsg;
 
-bool ao_led_send(ao_led_handle_t* hao, ao_led_message_t* pmsg)
+	if(NULL != hao->hqueue)
+	{
+		if (pdPASS == xQueueReceive(hao->hqueue, (void*)&pmsg, 0))
+		{
+			switch (pmsg->action)
+			{
+			case AO_LED_MESSAGE_ON:
+				turn_on_led(hao);
+				break;
+			case AO_LED_MESSAGE_ON:
+				turn_off_led(hao);
+				break;
+			default:
+				break;
+			}
+
+			if(pmsg->callback)
+			{
+				pmsg->callback;
+			}
+		}
+	}
+}
+
+bool ao_led_send_event(ao_led_handle_t* hao, ao_led_message_t* pmsg)
 {
 	if (NULL == hao->hqueue)
 	{
 		hao->hqueue = xQueueCreate(QUEUE_LENGTH_, sizeof(ao_led_message_t*));
-		if (hao->hqueue == NULL) return false;
-
-		if (xTaskCreate(task_, "task_led", 128, (void*)hao, tskIDLE_PRIORITY, NULL) != pdPASS)
+		if (hao->hqueue == NULL)
 		{
-			vQueueDelete(hao->hqueue);
-			hao->hqueue = NULL;
+			// error
 			return false;
 		}
 	}
 
-	return (pdPASS == xQueueSend(hao->hqueue, &pmsg, 0));
+	return (pdPASS == xQueueSend(hao->hqueue, (void*)&pmsg, 0));
+}
+
+void queue_led_delete(ao_led_handle_t* hao)
+{
+	if(NULL != hao.hqueue)
+	{
+		ao_led_message_t *pmsg;
+		while(pdPASS == xQueueReceive(hao.hqueue, (void*)&pmsg, 0))
+		{
+			vPortFree(pmsg);
+		}
+		vQueueDelete(hao.hqueue);
+		hao.hqueue = NULL;
+	}
 }
 
 /********************** end of file ******************************************/
