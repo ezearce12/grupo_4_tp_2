@@ -79,16 +79,18 @@ static void queue_ui_delete(void);
 static ao_ui_handle_t hao_ui = {.hqueue = NULL};
 
 /********************** external data definition *****************************/
-extern ao_led_handle_t hao_led;
+//extern ao_led_handle_t hao_led;
+extern ao_led_handle_t hao_led[AO_LED_COLOR__N];
 
 /********************** internal functions definition ************************/
 
 static void callback_task_ui(void *pmsg)
 {
+	LOGGER_INFO("Liberando msg UI: %d", ((ao_ui_message_t*)pmsg)->action);
 	vPortFree(pmsg);
 }
 
-void task_ui(void)
+void task_ui(void* argument)
 {
 	static ui_state_t current_state = UI_STATE_STANDBY;
 
@@ -123,16 +125,19 @@ void task_ui(void)
 				case UI_STATE_RED:
 				case UI_STATE_GREEN:
 				case UI_STATE_BLUE:
-					ao_led_message_t *pmsg_led_off = (ao_led_message_t*)pvPortMalloc(sizeof(*ao_led_message_t));
+					LOGGER_INFO("Creando msg LED OFF");
+					ao_led_message_t *pmsg_led_off = (ao_led_message_t*)pvPortMalloc(sizeof(ao_led_message_t));
 					if (NULL != pmsg_led_off)
 					{
 						pmsg_led_off->action   = AO_LED_MESSAGE_OFF;
 						pmsg_led_off->callback = callback_task_ui;
-						ao_led_handle_t *hao =	(current_state == UI_STATE_RED)   ? &hao_led[AO_LED_COLOR_RED]:
+						ao_led_handle_t *hao =  (current_state == UI_STATE_RED)   ? &hao_led[AO_LED_COLOR_RED]:
 												(current_state == UI_STATE_GREEN) ? &hao_led[AO_LED_COLOR_GREEN]:
 																					&hao_led[AO_LED_COLOR_BLUE];
+
 						if (!ao_led_send_event(hao, pmsg_led_off))
 						{
+							LOGGER_INFO("No se pudo enviar msg LED OFF - Liberando msg");
 							vPortFree(pmsg_led_off);
 						}
 					}
@@ -150,7 +155,8 @@ void task_ui(void)
 			case UI_STATE_RED:
 			case UI_STATE_GREEN:
 			case UI_STATE_BLUE:
-				ao_led_message_t *pmsg_led_on = (ao_led_message_t*)pvPortMalloc(sizeof(*ao_led_message_t));
+				LOGGER_INFO("Creando msg LED ON");
+				ao_led_message_t *pmsg_led_on = (ao_led_message_t*)pvPortMalloc(sizeof(ao_led_message_t));
 				if (NULL != pmsg_led_on)
 				{
 					pmsg_led_on->action   = AO_LED_MESSAGE_ON;
@@ -160,6 +166,7 @@ void task_ui(void)
 																			 &hao_led[AO_LED_COLOR_BLUE];
 					if (!ao_led_send_event(hao, pmsg_led_on))
 					{
+						LOGGER_INFO("No se pudo enviar msg LED ON - Liberando msg");
 						vPortFree(pmsg_led_on);
 					}
 				}
@@ -175,7 +182,7 @@ void task_ui(void)
 			// 5) Liberar memoria del mensaje
 			if(pmsg->callback)
 			{
-				pmsg->callback;
+				pmsg->callback(pmsg);
 			}
 
 		}
@@ -195,24 +202,27 @@ bool ao_ui_send_event(ao_ui_message_t *pmsg)
 {
 	if(NULL == hao_ui.hqueue)
 	{
+		LOGGER_INFO("Creando cola UI");
 		hao_ui.hqueue = xQueueCreate(QUEUE_LENGTH_, QUEUE_ITEM_SIZE_);
 		if (NULL == hao_ui.hqueue)
 		{
+			LOGGER_INFO("Error creando cola UI");
 			// error
 			return false;
 		}
 
+		LOGGER_INFO("Creando tarea UI");
 		BaseType_t status;
 		status = xTaskCreate(task_ui, "task_ui", 128, NULL, tskIDLE_PRIORITY, NULL);
 		if (pdPASS != status)
 		{
+			LOGGER_INFO("Error creando tarea UI");
 			// error
 			vQueueDelete(hao_ui.hqueue);
 			hao_ui.hqueue = NULL;
 			return false;
 		}
 	}
-
 	return (pdPASS == xQueueSend(hao_ui.hqueue, (void*)&pmsg, 0));
 }
 
@@ -220,11 +230,14 @@ static void queue_ui_delete(void)
 {
 	if(NULL != hao_ui.hqueue)
 	{
+		LOGGER_INFO("Eliminando cola UI");
 		ao_ui_message_t *pmsg;
 		while(pdPASS == xQueueReceive(hao_ui.hqueue, (void*)&pmsg, 0))
 		{
+			LOGGER_INFO("Liberando msg UI: %d", pmsg->action);
 			vPortFree(pmsg);
 		}
+		LOGGER_INFO("Cola UI eliminada");
 		vQueueDelete(hao_ui.hqueue);
 		hao_ui.hqueue = NULL;
 	}

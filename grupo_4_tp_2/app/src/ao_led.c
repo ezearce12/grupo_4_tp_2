@@ -64,11 +64,11 @@
 static GPIO_TypeDef* led_port_[] = {LED_RED_PORT, LED_GREEN_PORT,  LED_BLUE_PORT};
 static uint16_t      led_pin_[]  = {LED_RED_PIN,  LED_GREEN_PIN,   LED_BLUE_PIN };
 
-ao_led_handle_t hao_red   = {.color = AO_LED_COLOR_RED,  .hqueue = NULL};
-ao_led_handle_t hao_green = {.color = AO_LED_COLOR_GREEN,.hqueue = NULL};
-ao_led_handle_t hao_blue  = {.color = AO_LED_COLOR_BLUE, .hqueue = NULL};
-
-ao_led_handle_t hao_led[AO_LED_COLOR__N] = {hao_red, hao_green, hao_blue};
+ao_led_handle_t hao_led[AO_LED_COLOR__N] = {
+    {.color = AO_LED_COLOR_RED,   .hqueue = NULL},
+    {.color = AO_LED_COLOR_GREEN, .hqueue = NULL},
+    {.color = AO_LED_COLOR_BLUE,  .hqueue = NULL}
+};
 
 /********************** external data definition *****************************/
 
@@ -97,7 +97,7 @@ void process_ao_led(ao_led_handle_t* hao)
 			case AO_LED_MESSAGE_ON:
 				turn_on_led(hao);
 				break;
-			case AO_LED_MESSAGE_ON:
+			case AO_LED_MESSAGE_OFF:
 				turn_off_led(hao);
 				break;
 			default:
@@ -106,7 +106,7 @@ void process_ao_led(ao_led_handle_t* hao)
 
 			if(pmsg->callback)
 			{
-				pmsg->callback;
+				pmsg->callback(pmsg);
 			}
 		}
 	}
@@ -116,9 +116,11 @@ bool ao_led_send_event(ao_led_handle_t* hao, ao_led_message_t* pmsg)
 {
 	if (NULL == hao->hqueue)
 	{
+		LOGGER_INFO("Creando cola LED %d", hao->color);
 		hao->hqueue = xQueueCreate(QUEUE_LENGTH_, sizeof(ao_led_message_t*));
 		if (hao->hqueue == NULL)
 		{
+			LOGGER_INFO("Error creando cola LED %d", hao->color);
 			// error
 			return false;
 		}
@@ -129,15 +131,18 @@ bool ao_led_send_event(ao_led_handle_t* hao, ao_led_message_t* pmsg)
 
 void queue_led_delete(ao_led_handle_t* hao)
 {
-	if(NULL != hao.hqueue)
+	if(NULL != hao->hqueue)
 	{
+		LOGGER_INFO("Eliminando cola LED %d", hao->color);
 		ao_led_message_t *pmsg;
-		while(pdPASS == xQueueReceive(hao.hqueue, (void*)&pmsg, 0))
+		while(pdPASS == xQueueReceive(hao->hqueue, (void*)&pmsg, 0))
 		{
+			LOGGER_INFO("Liberando msg LED %d: %d", hao->color, pmsg->action);
 			vPortFree(pmsg);
 		}
-		vQueueDelete(hao.hqueue);
-		hao.hqueue = NULL;
+		LOGGER_INFO("Cola LED %d eliminada", hao->color);
+		vQueueDelete(hao->hqueue);
+		hao->hqueue = NULL;
 	}
 }
 

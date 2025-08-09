@@ -118,6 +118,7 @@ static button_type_t button_process_state_(bool value)
 
 static void callback_task_button(void *pmsg)
 {
+	LOGGER_INFO("Liberando msg button: %d", ((ao_ui_message_t*)pmsg)->action);
 	vPortFree(pmsg);
 }
 
@@ -149,6 +150,7 @@ void task_button(void* argument)
 
 					if (!ao_ui_send_event(pmsg))
 					{
+						LOGGER_INFO("No se pudo enviar msg button: %d", pmsg->action);
 						vPortFree(pmsg);
 					}
 				}
