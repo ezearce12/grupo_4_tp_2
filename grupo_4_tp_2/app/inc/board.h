@@ -54,7 +54,7 @@ extern "C" {
 #define NUCLEO_F413ZH		(5)
 #define STM32F429I_DISCO1	(6)
 
-#define BOARD (NUCLEO_F429ZI)
+#define BOARD (NUCLEO_F446RE)
 
 /* STM32 Nucleo Boards - 64 Pins */
 #if ((BOARD == NUCLEO_F103RC) || (BOARD == NUCLEO_F401RE) || (BOARD == NUCLEO_F446RE))
