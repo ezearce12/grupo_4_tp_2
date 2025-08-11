@@ -48,14 +48,27 @@
 #include "logger.h"
 #include "dwt.h"
 
-#include <ao_led.h>
+#include "ao_led.h"
 
 /********************** macros and definitions *******************************/
 
 #define QUEUE_LENGTH_            (10)
 #define QUEUE_ITEM_SIZE_         (sizeof(ao_led_message_t*))
 
-/********************** internal data declaration ****************************/
+/********************** external data definition ****************************/
+const char* const led_color_name[] = {
+		"LED_RED",
+		"LED_GREEN",
+		"LED_BLUE",
+		"LED_NONE"
+};
+
+const char* const led_action_name[] = {
+		"MESSAGE_LED_ON",
+		"MESSAGE_LED_OFF",
+		"MESSAGE_LED_BLINK",
+		"MESSAGE_LED_NONE",
+};
 
 /********************** internal functions declaration ***********************/
 
@@ -70,17 +83,17 @@ ao_led_handle_t hao_led[AO_LED_COLOR__N] = {
     {.color = AO_LED_COLOR_BLUE,  .hqueue = NULL}
 };
 
-/********************** external data definition *****************************/
-
 /********************** internal functions definition ************************/
 static void turn_on_led(ao_led_handle_t* hao)
 {
 	HAL_GPIO_WritePin(led_port_[hao->color], led_pin_[hao->color], SET);
+	LOGGER_INFO("%s encendido", led_color_name[hao->color]);
 }
 
 static void turn_off_led(ao_led_handle_t* hao)
 {
 	HAL_GPIO_WritePin(led_port_[hao->color], led_pin_[hao->color], RESET);
+	LOGGER_INFO("%s apagado", led_color_name[hao->color]);
 }
 
 /********************** external functions definition ************************/
@@ -116,11 +129,11 @@ bool ao_led_send_event(ao_led_handle_t* hao, ao_led_message_t* pmsg)
 {
 	if (NULL == hao->hqueue)
 	{
-		LOGGER_INFO("Creando cola LED %d", hao->color);
+		LOGGER_INFO("Creando cola de %s", led_color_name[hao->color]);
 		hao->hqueue = xQueueCreate(QUEUE_LENGTH_, sizeof(ao_led_message_t*));
 		if (hao->hqueue == NULL)
 		{
-			LOGGER_INFO("Error creando cola LED %d", hao->color);
+			LOGGER_INFO("Error creando cola de %s", led_color_name[hao->color]);
 			// error
 			return false;
 		}
@@ -133,14 +146,14 @@ void queue_led_delete(ao_led_handle_t* hao)
 {
 	if(NULL != hao->hqueue)
 	{
-		LOGGER_INFO("Eliminando cola LED %d", hao->color);
+		LOGGER_INFO("Eliminando cola de %s", led_color_name[hao->color]);
 		ao_led_message_t *pmsg;
 		while(pdPASS == xQueueReceive(hao->hqueue, (void*)&pmsg, 0))
 		{
-			LOGGER_INFO("Liberando msg LED %d: %d", hao->color, pmsg->action);
+			LOGGER_INFO("Liberando memoria de %s de la cola %s", led_action_name[pmsg->action], led_color_name[hao->color]);
 			vPortFree(pmsg);
 		}
-		LOGGER_INFO("Cola LED %d eliminada", hao->color);
+		LOGGER_INFO("Cola %s eliminada", led_color_name[hao->color]);
 		vQueueDelete(hao->hqueue);
 		hao->hqueue = NULL;
 	}

@@ -86,6 +86,8 @@ typedef struct {
 } ao_led_handle_t;
 
 /********************** external data declaration ****************************/
+extern const char * const led_color_name[];
+extern const char * const led_action_name[];
 
 /********************** external functions declaration ***********************/
 
