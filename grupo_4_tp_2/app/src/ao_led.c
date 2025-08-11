@@ -148,11 +148,16 @@ void queue_led_delete(ao_led_handle_t* hao)
 	{
 		LOGGER_INFO("Eliminando cola de %s", led_color_name[hao->color]);
 		ao_led_message_t *pmsg;
-		while(pdPASS == xQueueReceive(hao->hqueue, (void*)&pmsg, 0))
-		{
-			LOGGER_INFO("Liberando memoria de %s de la cola %s", led_action_name[pmsg->action], led_color_name[hao->color]);
-			vPortFree(pmsg);
-		}
+
+		// Exclusión mutua para evitar que se ingresen mensajes cuando se esta destruyendo el recurso
+		taskENTER_CRITICAL();{
+			while(pdPASS == xQueueReceive(hao->hqueue, (void*)&pmsg, 0))
+			{
+				LOGGER_INFO("Liberando memoria de %s de la cola %s", led_action_name[pmsg->action], led_color_name[hao->color]);
+				vPortFree(pmsg);
+			}
+		}taskEXIT_CRITICAL();
+
 		LOGGER_INFO("Cola %s eliminada", led_color_name[hao->color]);
 		vQueueDelete(hao->hqueue);
 		hao->hqueue = NULL;

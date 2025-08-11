@@ -142,8 +142,8 @@ void task_ui(void* argument)
 						pmsg_led_off->action   = AO_LED_MESSAGE_OFF;
 						pmsg_led_off->callback = callback_task_ui;
 						ao_led_handle_t *hao =  (current_state == UI_STATE_RED)   ? &hao_led[AO_LED_COLOR_RED]:
-												(current_state == UI_STATE_GREEN) ? &hao_led[AO_LED_COLOR_GREEN]:
-																					&hao_led[AO_LED_COLOR_BLUE];
+								(current_state == UI_STATE_GREEN) ? &hao_led[AO_LED_COLOR_GREEN]:
+										&hao_led[AO_LED_COLOR_BLUE];
 
 						if (!ao_led_send_event(hao, pmsg_led_off))
 						{
@@ -155,42 +155,42 @@ void task_ui(void* argument)
 				default:
 					break;
 				}
-			}
 
-			// 3a) Encender el LED del nuevo estado (encolo elementos)
-			switch (next_state)
-			{
-			case UI_STATE_STANDBY:
-				break;
-			case UI_STATE_RED:
-			case UI_STATE_GREEN:
-			case UI_STATE_BLUE:
-				LOGGER_INFO("Creando MESSAGE_LED_ON");
-				ao_led_message_t *pmsg_led_on = (ao_led_message_t*)pvPortMalloc(sizeof(ao_led_message_t));
-				if (NULL != pmsg_led_on)
+				// 3a) Encender el LED del nuevo estado (encolo elementos)
+				switch (next_state)
 				{
-					pmsg_led_on->action   = AO_LED_MESSAGE_ON;
-					pmsg_led_on->callback = callback_task_ui;
-					ao_led_handle_t *hao =	(next_state == UI_STATE_RED)   ? &hao_led[AO_LED_COLOR_RED]   :
-											(next_state == UI_STATE_GREEN) ? &hao_led[AO_LED_COLOR_GREEN] :
-																			 &hao_led[AO_LED_COLOR_BLUE];
-					if (!ao_led_send_event(hao, pmsg_led_on))
+				case UI_STATE_STANDBY:
+					break;
+				case UI_STATE_RED:
+				case UI_STATE_GREEN:
+				case UI_STATE_BLUE:
+					LOGGER_INFO("Creando MESSAGE_LED_ON");
+					ao_led_message_t *pmsg_led_on = (ao_led_message_t*)pvPortMalloc(sizeof(ao_led_message_t));
+					if (NULL != pmsg_led_on)
 					{
-						LOGGER_INFO("No se pudo enviar MESSAGE_LED_ON - Liberando memoria");
-						vPortFree(pmsg_led_on);
+						pmsg_led_on->action   = AO_LED_MESSAGE_ON;
+						pmsg_led_on->callback = callback_task_ui;
+						ao_led_handle_t *hao =	(next_state == UI_STATE_RED)   ? &hao_led[AO_LED_COLOR_RED]   :
+								(next_state == UI_STATE_GREEN) ? &hao_led[AO_LED_COLOR_GREEN] :
+										&hao_led[AO_LED_COLOR_BLUE];
+						if (!ao_led_send_event(hao, pmsg_led_on))
+						{
+							LOGGER_INFO("No se pudo enviar MESSAGE_LED_ON - Liberando memoria");
+							vPortFree(pmsg_led_on);
+						}
 					}
+					break;
+
+				default:
+					break;
 				}
-				break;
 
-			default:
-				break;
+				// 3b) Encender el LED del nuevo estado (decolo elementos)
+				for(uint8_t i = 0; i < AO_LED_COLOR__N; i++) process_ao_led(&hao_led[i]);
+
+				// 4) Transicionar
+				current_state = next_state;
 			}
-
-			// 3b) Encender el LED del nuevo estado (decolo elementos)
-			for(uint8_t i = 0; i < AO_LED_COLOR__N; i++) process_ao_led(&hao_led[i]);
-
-			// 4) Transicionar
-			current_state = next_state;
 
 			// 5) Liberar memoria del mensaje
 			if(pmsg->callback)
@@ -246,11 +246,16 @@ static void queue_ui_delete(void)
 	{
 		LOGGER_INFO("Eliminando cola de UI");
 		ao_ui_message_t *pmsg;
-		while(pdPASS == xQueueReceive(hao_ui.hqueue, (void*)&pmsg, 0))
-		{
-			LOGGER_INFO("Liberando memoria de %s de la cola UI", button_action_name[pmsg->action]);
-			vPortFree(pmsg);
-		}
+
+		// Exclusión mutua para evitar que se ingresen mensajes cuando se esta destruyendo el recurso
+		taskENTER_CRITICAL();{
+			while(pdPASS == xQueueReceive(hao_ui.hqueue, (void*)&pmsg, 0))
+			{
+				LOGGER_INFO("Liberando memoria de %s de la cola UI", button_action_name[pmsg->action]);
+				vPortFree(pmsg);
+			}
+		}taskEXIT_CRITICAL();
+
 		LOGGER_INFO("Cola UI eliminada");
 		vQueueDelete(hao_ui.hqueue);
 		hao_ui.hqueue = NULL;
