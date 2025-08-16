@@ -59,11 +59,6 @@
 
 /********************** internal data declaration ****************************/
 
-typedef struct
-{
-	QueueHandle_t hqueue;
-} ao_ui_handle_t;
-
 typedef enum {
 	UI_STATE_STANDBY,
 	UI_STATE_RED,
@@ -72,7 +67,7 @@ typedef enum {
 } ui_state_t;
 
 /********************** internal data definition *****************************/
-static ao_ui_handle_t hao_ui = {.hqueue = NULL};
+ao_ui_handle_t hao_ui = {.hqueue = NULL};
 
 /********************** external data definition *****************************/
 extern ao_led_handle_t hao_led[AO_LED_COLOR__N];
@@ -99,7 +94,7 @@ void process_ao_ui(void)
 	static ui_state_t current_state = UI_STATE_STANDBY;
 
 	ao_ui_message_t *pmsg;
-	if (pdPASS == xQueueReceive(hao_ui.hqueue, &pmsg, pdMS_TO_TICKS(UI_IDLE_TIMEOUT_MS_)))
+	if (pdPASS == xQueueReceive(hao_ui.hqueue, &pmsg, 0))
 	{
 		// 1) Evento -> próximo estado
 		ui_state_t next_state = current_state;
@@ -148,7 +143,7 @@ void process_ao_ui(void)
 				break;
 			}
 
-			// 3a) Encender el LED del nuevo estado (encolo elementos)
+			// 3) Enviar evento de encendido de LED (encolo elementos)
 			switch (next_state)
 			{
 			case UI_STATE_STANDBY:
@@ -176,9 +171,6 @@ void process_ao_ui(void)
 			default:
 				break;
 			}
-
-			// 3b) Encender el LED del nuevo estado (decolo elementos)
-			for(uint8_t i = 0; i < AO_LED_COLOR__N; i++) process_ao_led(&hao_led[i]);
 
 			// 4) Transicionar
 			current_state = next_state;

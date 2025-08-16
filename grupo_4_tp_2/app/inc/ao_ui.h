@@ -73,6 +73,11 @@ typedef struct
     ao_ui_action_t action;
 } ao_ui_message_t;
 
+typedef struct
+{
+	QueueHandle_t hqueue;
+} ao_ui_handle_t;
+
 /********************** external data declaration ****************************/
 extern const char * const button_action_name[];
 

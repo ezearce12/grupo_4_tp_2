@@ -77,11 +77,9 @@ const char* const led_action_name[] = {
 static GPIO_TypeDef* led_port_[] = {LED_RED_PORT, LED_GREEN_PORT,  LED_BLUE_PORT};
 static uint16_t      led_pin_[]  = {LED_RED_PIN,  LED_GREEN_PIN,   LED_BLUE_PIN };
 
-ao_led_handle_t hao_led[AO_LED_COLOR__N] = {
-    {.color = AO_LED_COLOR_RED,   .hqueue = NULL},
-    {.color = AO_LED_COLOR_GREEN, .hqueue = NULL},
-    {.color = AO_LED_COLOR_BLUE,  .hqueue = NULL}
-};
+ao_led_handle_t hao_led[AO_LED_COLOR__N] = {	{.color = AO_LED_COLOR_RED,   .hqueue = NULL},
+												{.color = AO_LED_COLOR_GREEN, .hqueue = NULL},
+												{.color = AO_LED_COLOR_BLUE,  .hqueue = NULL}	};
 
 /********************** internal functions definition ************************/
 static void turn_on_led(ao_led_handle_t* hao)

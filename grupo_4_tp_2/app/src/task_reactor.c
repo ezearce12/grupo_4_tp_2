@@ -28,8 +28,11 @@
 TaskHandle_t htask_reactor = NULL;
 
 /********************** external data definition *****************************/
+extern ao_ui_handle_t  hao_ui;
 extern ao_led_handle_t hao_led[AO_LED_COLOR__N];
 
+/********************** internal functions declaration ***********************/
+bool reactor_has_work(void);
 
 /********************** external functions definition ************************/
 void task_reactor(void* argument)
@@ -43,13 +46,18 @@ void task_reactor(void* argument)
 			process_ao_led(&hao_led[i]);
 		}
 
+		if(!reactor_has_work())
+		{
+			task_reactor_delete();
+		}
+
 		vTaskDelay(pdMS_TO_TICKS(TASK_PERIOD_MS_));
 	}
 }
 
 bool task_reactor_create(void)
 {
-	if(NULL != htask_reactor)
+	if(NULL == htask_reactor)
 	{
 		BaseType_t status;
 		status = xTaskCreate(task_reactor, "task_reactor", 128, NULL, tskIDLE_PRIORITY, &htask_reactor);
@@ -65,15 +73,35 @@ bool task_reactor_create(void)
 			LOGGER_INFO("Exito creando task_reactor");
 		}
 	}
-
 	return true;
 }
 
 void task_reactor_delete(void)
 {
+	queue_ui_delete();
+
+	for(uint8_t i = 0; i < AO_LED_COLOR__N; i++)
+		queue_led_delete(&hao_led[i]);
+
 	LOGGER_INFO("Eliminando task_reactor");
+	htask_reactor = NULL;
 	vTaskDelete(NULL);
 }
 
+/********************** internal functions definition ************************/
+
+bool reactor_has_work(void)
+{
+	if(uxQueueMessagesWaiting(hao_ui.hqueue))
+		return true;
+
+	for(uint8_t i = 0; i < AO_LED_COLOR__N; i++)
+		if(NULL != hao_led[i].hqueue)
+			if(uxQueueMessagesWaiting(hao_led[i].hqueue))
+				return true;
+
+	return false;
+}
 
 
+/********************** end of file ******************************************/
