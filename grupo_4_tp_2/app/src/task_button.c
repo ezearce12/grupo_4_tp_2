@@ -48,7 +48,9 @@
 #include "logger.h"
 #include "dwt.h"
 
+#include "task_reactor.h"
 #include "ao_ui.h"
+#include "ao_led.h"
 
 /********************** macros and definitions *******************************/
 
@@ -152,10 +154,13 @@ void task_button(void* argument)
 					pmsg->action = (ao_ui_action_t)button_type;
 					pmsg->callback = callback_task_button;
 
-					if (!ao_ui_send_event(pmsg))
+					if(task_reactor_create())
 					{
-						LOGGER_INFO("No se pudo enviar %s", button_action_name[pmsg->action]);
-						vPortFree(pmsg);
+						if (!ao_ui_send_event(pmsg))
+						{
+							LOGGER_INFO("Error al enviar %s", button_action_name[pmsg->action]);
+							vPortFree(pmsg);
+						}
 					}
 				}
 				break;

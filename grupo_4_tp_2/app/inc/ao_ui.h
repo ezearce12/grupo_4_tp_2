@@ -78,7 +78,9 @@ extern const char * const button_action_name[];
 
 /********************** external functions declaration ***********************/
 
-void task_ui(void* argument);
+void callback_task_ui(void *pmsg);
+void process_ao_ui	 (void);
+void queue_ui_delete (void);
 bool ao_ui_send_event(ao_ui_message_t *pmsg);
 
 /********************** End of CPP guard *************************************/

@@ -133,8 +133,8 @@ bool ao_led_send_event(ao_led_handle_t* hao, ao_led_message_t* pmsg)
 		hao->hqueue = xQueueCreate(QUEUE_LENGTH_, sizeof(ao_led_message_t*));
 		if (hao->hqueue == NULL)
 		{
-			LOGGER_INFO("Error creando cola de %s", led_color_name[hao->color]);
 			// error
+			LOGGER_INFO("Error creando cola de %s", led_color_name[hao->color]);
 			return false;
 		}
 	}
