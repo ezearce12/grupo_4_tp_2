@@ -10,6 +10,6 @@
 
 /********************** external functions declaration ***********************/
 bool task_reactor_create(void);
-void task_reactor_delete(void);
+//void task_reactor_delete(void);
 
 #endif /* INC_TASK_REACTOR_H_ */

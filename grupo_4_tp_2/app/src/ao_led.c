@@ -76,6 +76,7 @@ const char* const led_action_name[] = {
 
 static GPIO_TypeDef* led_port_[] = {LED_RED_PORT, LED_GREEN_PORT,  LED_BLUE_PORT};
 static uint16_t      led_pin_[]  = {LED_RED_PIN,  LED_GREEN_PIN,   LED_BLUE_PIN };
+static SemaphoreHandle_t g_led_queue_handle_mutex[AO_LED_COLOR__N] = { NULL };
 
 ao_led_handle_t hao_led[AO_LED_COLOR__N] = {	{.color = AO_LED_COLOR_RED,   .hqueue = NULL},
 												{.color = AO_LED_COLOR_GREEN, .hqueue = NULL},
@@ -94,12 +95,22 @@ static void turn_off_led(ao_led_handle_t* hao)
 	LOGGER_INFO("%s apagado", led_color_name[hao->color]);
 }
 
+static void ao_led_mutex_init_once(ao_led_color led_color)
+{
+    if (g_led_queue_handle_mutex[led_color] == NULL) {
+        g_led_queue_handle_mutex[led_color] = xSemaphoreCreateMutex();
+        configASSERT(g_led_queue_handle_mutex[led_color] != NULL);
+    }
+}
+
+
 /********************** external functions definition ************************/
 void process_ao_led(ao_led_handle_t* hao)
 {
+	ao_led_message_t* pmsg;
+
 	if(NULL != hao->hqueue)
 	{
-		ao_led_message_t* pmsg;
 		if (pdPASS == xQueueReceive(hao->hqueue, (void*)&pmsg, 0))
 		{
 			switch (pmsg->action)
@@ -122,43 +133,69 @@ void process_ao_led(ao_led_handle_t* hao)
 	}
 }
 
-bool ao_led_send_event(ao_led_handle_t* hao, ao_led_message_t* pmsg)
+bool ao_led_send_event(ao_led_handle_t* p_led_handle, ao_led_message_t* p_led_message)
 {
-	if (NULL == hao->hqueue)
-	{
-		LOGGER_INFO("Creando cola de %s", led_color_name[hao->color]);
-		hao->hqueue = xQueueCreate(QUEUE_LENGTH_, sizeof(ao_led_message_t*));
-		if (hao->hqueue == NULL)
-		{
-			// error
-			LOGGER_INFO("Error creando cola de %s", led_color_name[hao->color]);
-			return false;
-		}
-	}
+    if (p_led_handle == NULL || p_led_message == NULL) return false;
 
-	return (pdPASS == xQueueSend(hao->hqueue, (void*)&pmsg, 0));
+    ao_led_mutex_init_once(p_led_handle->color);
+    xSemaphoreTake(g_led_queue_handle_mutex[p_led_handle->color], portMAX_DELAY);
+
+    if (p_led_handle->hqueue == NULL) {
+        LOGGER_INFO("Creando cola de %s", led_color_name[p_led_handle->color]);
+        p_led_handle->hqueue = xQueueCreate(QUEUE_LENGTH_, sizeof(ao_led_message_t*));
+        if (p_led_handle->hqueue == NULL) {
+            LOGGER_INFO("Error creando cola de %s", led_color_name[p_led_handle->color]);
+            xSemaphoreGive(g_led_queue_handle_mutex[p_led_handle->color]);
+            return false;
+        }
+    }
+
+    BaseType_t send_status = xQueueSend(p_led_handle->hqueue, (void*)&p_led_message, 0);
+    xSemaphoreGive(g_led_queue_handle_mutex[p_led_handle->color]);
+
+    return (send_status == pdPASS);
 }
 
-void queue_led_delete(ao_led_handle_t* hao)
+bool queue_led_delete(ao_led_handle_t* p_led_handle)
 {
-	if(NULL != hao->hqueue)
-	{
-		LOGGER_INFO("Eliminando cola de %s", led_color_name[hao->color]);
-		ao_led_message_t *pmsg;
+    if (p_led_handle == NULL) return true;
 
-		// Exclusión mutua para evitar que se ingresen mensajes cuando se esta destruyendo el recurso
-		taskENTER_CRITICAL();{
-			while(pdPASS == xQueueReceive(hao->hqueue, (void*)&pmsg, 0))
-			{
-				LOGGER_INFO("Liberando memoria de %s de la cola %s", led_action_name[pmsg->action], led_color_name[hao->color]);
-				vPortFree(pmsg);
-			}
-		}taskEXIT_CRITICAL();
+    ao_led_mutex_init_once(p_led_handle->color);
+    xSemaphoreTake(g_led_queue_handle_mutex[p_led_handle->color], portMAX_DELAY);
 
-		LOGGER_INFO("Cola %s eliminada", led_color_name[hao->color]);
-		vQueueDelete(hao->hqueue);
-		hao->hqueue = NULL;
-	}
+    QueueHandle_t local_queue_handle = p_led_handle->hqueue;
+    if (local_queue_handle == NULL) {
+        xSemaphoreGive(g_led_queue_handle_mutex[p_led_handle->color]);
+        return true; /* ya no existe */
+    }
+
+    if (uxQueueMessagesWaiting(local_queue_handle) != 0U) {
+        xSemaphoreGive(g_led_queue_handle_mutex[p_led_handle->color]);
+        return false; /* hay pendientes: no borrar */
+    }
+
+    p_led_handle->hqueue = NULL;
+    xSemaphoreGive(g_led_queue_handle_mutex[p_led_handle->color]);
+
+    LOGGER_INFO("Cola %s eliminada", led_color_name[p_led_handle->color]);
+    vQueueDelete(local_queue_handle);
+    return true;
+}
+
+bool ao_led_has_work(const ao_led_handle_t* p_led_handle)
+{
+    if (p_led_handle == NULL) return false;
+
+    bool there_is_pending_work = false;
+    ao_led_mutex_init_once(p_led_handle->color);
+    xSemaphoreTake(g_led_queue_handle_mutex[p_led_handle->color], portMAX_DELAY);
+
+    if (p_led_handle->hqueue != NULL && uxQueueMessagesWaiting(p_led_handle->hqueue) > 0U) {
+        there_is_pending_work = true;
+    }
+
+    xSemaphoreGive(g_led_queue_handle_mutex[p_led_handle->color]);
+    return there_is_pending_work;
 }
 
 /********************** end of file ******************************************/

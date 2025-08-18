@@ -67,9 +67,8 @@ typedef enum {
 } ui_state_t;
 
 /********************** internal data definition *****************************/
-volatile static bool ui_closing = false;
-
 ao_ui_handle_t hao_ui = {.hqueue = NULL};
+static SemaphoreHandle_t g_ui_queue_handle_mutex = NULL;
 
 /********************** external data definition *****************************/
 extern ao_led_handle_t hao_led[AO_LED_COLOR__N];
@@ -81,6 +80,15 @@ const char* const button_action_name[] = {
 		  "MESSAGE_BUTTON_LONG",
 		  "MESSAGE_BUTTON_N",
 };
+
+/********************** internal functions definition ************************/
+static void ao_ui_mutex_init_once(void)
+{
+    if (g_ui_queue_handle_mutex == NULL) {
+        g_ui_queue_handle_mutex = xSemaphoreCreateMutex();
+        configASSERT(g_ui_queue_handle_mutex != NULL);
+    }
+}
 
 /********************** external functions definition ************************/
 
@@ -95,173 +103,160 @@ void process_ao_ui(void)
 {
 	static ui_state_t current_state = UI_STATE_STANDBY;
 
-	if(NULL != hao_ui.hqueue)
+	ao_ui_message_t *pmsg;
+	if (pdPASS == xQueueReceive(hao_ui.hqueue, &pmsg, 0))
 	{
-		ao_ui_message_t *pmsg;
-		if (pdPASS == xQueueReceive(hao_ui.hqueue, &pmsg, 0))
+		// 1) Evento -> próximo estado
+		ui_state_t next_state = current_state;
+		switch (pmsg->action) {
+		case MSG_EVENT_BUTTON_PULSE:
+			next_state = UI_STATE_RED;
+			break;
+		case MSG_EVENT_BUTTON_SHORT:
+			next_state = UI_STATE_GREEN;
+			break;
+		case MSG_EVENT_BUTTON_LONG:
+			next_state = UI_STATE_BLUE;
+			break;
+		default:
+			break;
+		}
+
+		// 2) Si cambio el estado: apagar el LED del estado actual
+		if (next_state != current_state)
 		{
-			// 1) Evento -> próximo estado
-			ui_state_t next_state = current_state;
-			switch (pmsg->action) {
-			case MSG_EVENT_BUTTON_PULSE:
-				next_state = UI_STATE_RED;
+			switch (current_state)
+			{
+			case UI_STATE_STANDBY:
 				break;
-			case MSG_EVENT_BUTTON_SHORT:
-				next_state = UI_STATE_GREEN;
-				break;
-			case MSG_EVENT_BUTTON_LONG:
-				next_state = UI_STATE_BLUE;
+			case UI_STATE_RED:
+			case UI_STATE_GREEN:
+			case UI_STATE_BLUE:
+				LOGGER_INFO("Creando MESSAGE_LED_OFF");
+				ao_led_message_t *pmsg_led_off = (ao_led_message_t*)pvPortMalloc(sizeof(ao_led_message_t));
+				if (NULL != pmsg_led_off)
+				{
+					pmsg_led_off->action   = AO_LED_MESSAGE_OFF;
+					pmsg_led_off->callback = callback_task_ui;
+					ao_led_handle_t *hao =  (current_state == UI_STATE_RED)   ? 	&hao_led[AO_LED_COLOR_RED]:
+											(current_state == UI_STATE_GREEN) ? 	&hao_led[AO_LED_COLOR_GREEN]:
+																					&hao_led[AO_LED_COLOR_BLUE];
+
+					if (!ao_led_send_event(hao, pmsg_led_off))
+					{
+						LOGGER_INFO("No se pudo enviar MESSAGE_LED_OFF - Liberando memoria");
+						vPortFree(pmsg_led_off);
+					}
+				}
 				break;
 			default:
 				break;
 			}
 
-			// 2) Si cambio el estado: apagar el LED del estado actual
-			if (next_state != current_state)
+			// 3) Enviar evento de encendido de LED (encolo elementos)
+			switch (next_state)
 			{
-				switch (current_state)
+			case UI_STATE_STANDBY:
+				break;
+			case UI_STATE_RED:
+			case UI_STATE_GREEN:
+			case UI_STATE_BLUE:
+				LOGGER_INFO("Creando MESSAGE_LED_ON");
+				ao_led_message_t *pmsg_led_on = (ao_led_message_t*)pvPortMalloc(sizeof(ao_led_message_t));
+				if (NULL != pmsg_led_on)
 				{
-				case UI_STATE_STANDBY:
-					break;
-				case UI_STATE_RED:
-				case UI_STATE_GREEN:
-				case UI_STATE_BLUE:
-					LOGGER_INFO("Creando MESSAGE_LED_OFF");
-					ao_led_message_t *pmsg_led_off = (ao_led_message_t*)pvPortMalloc(sizeof(ao_led_message_t));
-					if (NULL != pmsg_led_off)
+					pmsg_led_on->action   = AO_LED_MESSAGE_ON;
+					pmsg_led_on->callback = callback_task_ui;
+					ao_led_handle_t *hao =	(next_state == UI_STATE_RED)   ? 	&hao_led[AO_LED_COLOR_RED]   :
+											(next_state == UI_STATE_GREEN) ? 	&hao_led[AO_LED_COLOR_GREEN] :
+																				&hao_led[AO_LED_COLOR_BLUE];
+					if (!ao_led_send_event(hao, pmsg_led_on))
 					{
-						pmsg_led_off->action   = AO_LED_MESSAGE_OFF;
-						pmsg_led_off->callback = callback_task_ui;
-						ao_led_handle_t *hao =  (current_state == UI_STATE_RED)   ? 	&hao_led[AO_LED_COLOR_RED]:
-												(current_state == UI_STATE_GREEN) ? 	&hao_led[AO_LED_COLOR_GREEN]:
-																						&hao_led[AO_LED_COLOR_BLUE];
-
-						if (!ao_led_send_event(hao, pmsg_led_off))
-						{
-							LOGGER_INFO("No se pudo enviar MESSAGE_LED_OFF - Liberando memoria");
-							vPortFree(pmsg_led_off);
-						}
+						LOGGER_INFO("No se pudo enviar MESSAGE_LED_ON - Liberando memoria");
+						vPortFree(pmsg_led_on);
 					}
-					break;
-				default:
-					break;
 				}
+				break;
 
-				// 3) Enviar evento de encendido de LED (encolo elementos)
-				switch (next_state)
-				{
-				case UI_STATE_STANDBY:
-					break;
-				case UI_STATE_RED:
-				case UI_STATE_GREEN:
-				case UI_STATE_BLUE:
-					LOGGER_INFO("Creando MESSAGE_LED_ON");
-					ao_led_message_t *pmsg_led_on = (ao_led_message_t*)pvPortMalloc(sizeof(ao_led_message_t));
-					if (NULL != pmsg_led_on)
-					{
-						pmsg_led_on->action   = AO_LED_MESSAGE_ON;
-						pmsg_led_on->callback = callback_task_ui;
-						ao_led_handle_t *hao =	(next_state == UI_STATE_RED)   ? 	&hao_led[AO_LED_COLOR_RED]   :
-												(next_state == UI_STATE_GREEN) ? 	&hao_led[AO_LED_COLOR_GREEN] :
-																					&hao_led[AO_LED_COLOR_BLUE];
-						if (!ao_led_send_event(hao, pmsg_led_on))
-						{
-							LOGGER_INFO("No se pudo enviar MESSAGE_LED_ON - Liberando memoria");
-							vPortFree(pmsg_led_on);
-						}
-					}
-					break;
-
-				default:
-					break;
-				}
-
-				// 4) Transicionar
-				current_state = next_state;
+			default:
+				break;
 			}
 
-			// 5) Liberar memoria del mensaje
-			if(pmsg->callback)
-			{
-				pmsg->callback(pmsg);
-			}
-
+			// 4) Transicionar
+			current_state = next_state;
 		}
+
+		// 5) Liberar memoria del mensaje
+		if(pmsg->callback)
+		{
+			pmsg->callback(pmsg);
+		}
+
 	}
 }
 
 bool ao_ui_send_event(ao_ui_message_t *pmsg)
 {
-	/* 1) Espera si se esta eliminando la cola
-	 *
-	 */
-	while(true)
-	{
-		bool closing;
-		taskENTER_CRITICAL();{
-			closing = ui_closing;
-		}taskEXIT_CRITICAL();
+    if (pmsg == NULL) return false;
 
-		if(!closing) break;
+    ao_ui_mutex_init_once();
 
-		vTaskDelay(pdMS_TO_TICKS(1));
-	}
+    xSemaphoreTake(g_ui_queue_handle_mutex, portMAX_DELAY);
 
-	/* 2) Crea cola si no existe
-	 *
-	 */
-	if(NULL == hao_ui.hqueue)
-	{
-		QueueHandle_t queue = xQueueCreate(QUEUE_LENGTH_, QUEUE_ITEM_SIZE_);
+    if (hao_ui.hqueue == NULL) {
+        LOGGER_INFO("Creando cola de UI");
+        hao_ui.hqueue = xQueueCreate(QUEUE_LENGTH_, QUEUE_ITEM_SIZE_);
+        if (hao_ui.hqueue == NULL) {
+            LOGGER_INFO("Error creando cola de UI");
+            xSemaphoreGive(g_ui_queue_handle_mutex);
+            return false;
+        }
+    }
 
-		if (NULL == queue)
-		{
-			// error
-			return false;
-		}
+    BaseType_t send_status = xQueueSend(hao_ui.hqueue, (void*)&pmsg, 0);
 
-		taskENTER_CRITICAL();{
-			if (!ui_closing && hao_ui.hqueue == NULL) {
-				hao_ui.hqueue = queue;
-				LOGGER_INFO("Creando cola de UI");
-				queue = NULL;
-			}
-		}taskEXIT_CRITICAL();
+    xSemaphoreGive(g_ui_queue_handle_mutex);
 
-		if(NULL != queue)
-		{
-			vQueueDelete(queue);
-			LOGGER_INFO("Error creando cola de UI");
-			return false;
-		}
-	}
-
-	/*	Acá sigue habiendo problema de carrea crítica
-	 *
-	 */
-
-	return (pdPASS == xQueueSend(hao_ui.hqueue, (void*)&pmsg, 0));
+    return (send_status == pdPASS);
 }
 
-void queue_ui_delete(void)
+
+bool queue_ui_delete(void)
 {
-	if(NULL != hao_ui.hqueue)
-	{
-		LOGGER_INFO("Eliminando cola de UI");
-		QueueHandle_t queue;
-		taskENTER_CRITICAL();{
-			queue = hao_ui.hqueue;
-			hao_ui.hqueue = NULL;
-			ui_closing    = true;
-		}taskEXIT_CRITICAL();
+    ao_ui_mutex_init_once();
+    xSemaphoreTake(g_ui_queue_handle_mutex, portMAX_DELAY);
 
-		vQueueDelete(queue);
+    QueueHandle_t local_queue_handle = hao_ui.hqueue;
+    if (local_queue_handle == NULL) {
+        xSemaphoreGive(g_ui_queue_handle_mutex);
+        return true; /* ya no existe */
+    }
 
-		taskENTER_CRITICAL();{
-		    ui_closing = false;
-		}taskEXIT_CRITICAL();
+    if (uxQueueMessagesWaiting(local_queue_handle) != 0U) {
+        xSemaphoreGive(g_ui_queue_handle_mutex);
+        return false; /* hay pendientes: no borrar */
+    }
 
-		LOGGER_INFO("Cola UI eliminada");
-	}
+    hao_ui.hqueue = NULL;  /* bloquear nuevos productores */
+    xSemaphoreGive(g_ui_queue_handle_mutex);
+
+    LOGGER_INFO("Cola UI eliminada");
+    vQueueDelete(local_queue_handle);
+    return true;
+}
+
+bool ao_ui_has_work(void)
+{
+    bool there_is_pending_work = false;
+
+    ao_ui_mutex_init_once();
+    xSemaphoreTake(g_ui_queue_handle_mutex, portMAX_DELAY);
+
+    if (hao_ui.hqueue != NULL && uxQueueMessagesWaiting(hao_ui.hqueue) > 0U) {
+        there_is_pending_work = true;
+    }
+
+    xSemaphoreGive(g_ui_queue_handle_mutex);
+    return there_is_pending_work;
 }
 /********************** end of file ******************************************/
