@@ -97,10 +97,9 @@ static void turn_off_led(ao_led_handle_t* hao)
 /********************** external functions definition ************************/
 void process_ao_led(ao_led_handle_t* hao)
 {
-	ao_led_message_t* pmsg;
-
 	if(NULL != hao->hqueue)
 	{
+		ao_led_message_t* pmsg;
 		if (pdPASS == xQueueReceive(hao->hqueue, (void*)&pmsg, 0))
 		{
 			switch (pmsg->action)

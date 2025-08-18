@@ -23,6 +23,7 @@
 
 /********************** macros and definitions *******************************/
 #define TASK_PERIOD_MS_           (50)
+#define UI_IDLE_TIMEOUT_MS_		  (10000)
 
 /********************** internal data declaration ****************************/
 TaskHandle_t htask_reactor = NULL;
@@ -37,6 +38,9 @@ bool reactor_has_work(void);
 /********************** external functions definition ************************/
 void task_reactor(void* argument)
 {
+	TickType_t now = xTaskGetTickCount();
+	TickType_t last_active = now;
+
 	while(true)
 	{
 		process_ao_ui();
@@ -46,7 +50,13 @@ void task_reactor(void* argument)
 			process_ao_led(&hao_led[i]);
 		}
 
-		if(!reactor_has_work())
+		now = xTaskGetTickCount();
+		if (reactor_has_work())
+		{
+			last_active = now;
+		}
+
+		else if((now - last_active) >= pdMS_TO_TICKS(UI_IDLE_TIMEOUT_MS_))
 		{
 			task_reactor_delete();
 		}
@@ -92,8 +102,9 @@ void task_reactor_delete(void)
 
 bool reactor_has_work(void)
 {
-	if(uxQueueMessagesWaiting(hao_ui.hqueue))
-		return true;
+	if(NULL != hao_ui.hqueue)
+		if(uxQueueMessagesWaiting(hao_ui.hqueue))
+			return true;
 
 	for(uint8_t i = 0; i < AO_LED_COLOR__N; i++)
 		if(NULL != hao_led[i].hqueue)
