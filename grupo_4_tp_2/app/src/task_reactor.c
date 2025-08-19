@@ -23,46 +23,49 @@
 
 /********************** macros and definitions *******************************/
 #define TASK_PERIOD_MS_           (50)
-#define UI_IDLE_TIMEOUT_MS_		  (10000)
+#define REACTOR_IDLE_TIMEOUT_MS_        (10000U)
 
 /********************** internal data declaration ****************************/
-TaskHandle_t htask_reactor = NULL;
+static TaskHandle_t htask_reactor = NULL;
 
 /********************** external data definition *****************************/
 extern ao_ui_handle_t  hao_ui;
 extern ao_led_handle_t hao_led[AO_LED_COLOR__N];
 
 /********************** internal functions declaration ***********************/
-bool reactor_has_work(void);
-
+static bool reactor_has_work(void);
+static bool task_reactor_delete(void);
 /********************** external functions definition ************************/
 void task_reactor(void* argument)
 {
-	TickType_t now = xTaskGetTickCount();
-	TickType_t last_active = now;
+    (void)argument;
 
-	while(true)
-	{
-		process_ao_ui();
+    const TickType_t kPeriodTicks  = pdMS_TO_TICKS(TASK_PERIOD_MS_);
+    const TickType_t kIdleTimeout  = pdMS_TO_TICKS(REACTOR_IDLE_TIMEOUT_MS_);
 
-		for(uint8_t i = 0; i < AO_LED_COLOR__N; i++)
-		{
-			process_ao_led(&hao_led[i]);
-		}
+    TickType_t last_activity_ticks = xTaskGetTickCount();
 
-		now = xTaskGetTickCount();
-		if (reactor_has_work())
-		{
-			last_active = now;
-		}
+    for (;;)
+    {
+        /* Poll no bloqueante a los AOs */
+        process_ao_ui();
 
-		else if((now - last_active) >= pdMS_TO_TICKS(UI_IDLE_TIMEOUT_MS_))
-		{
-			task_reactor_delete();
-		}
+        for (uint8_t i = 0; i < AO_LED_COLOR__N; i++)
+        {
+            process_ao_led(&hao_led[i]);
+        }
 
-		vTaskDelay(pdMS_TO_TICKS(TASK_PERIOD_MS_));
-	}
+        TickType_t now = xTaskGetTickCount();
+        if (reactor_has_work()) {
+            last_activity_ticks = now;
+        } else if ((now - last_activity_ticks) >= kIdleTimeout) {
+            if (!task_reactor_delete()) {
+                last_activity_ticks = now;
+            }
+        }
+
+        vTaskDelay(kPeriodTicks);
+    }
 }
 
 bool task_reactor_create(void)
@@ -70,7 +73,7 @@ bool task_reactor_create(void)
 	if(NULL == htask_reactor)
 	{
 		BaseType_t status;
-		status = xTaskCreate(task_reactor, "task_reactor", 128, NULL, tskIDLE_PRIORITY, &htask_reactor);
+		status = xTaskCreate(task_reactor, "task_reactor", 128, NULL, tskIDLE_PRIORITY + 1, &htask_reactor);
 		if (pdPASS != status)
 		{
 			// error
@@ -86,33 +89,41 @@ bool task_reactor_create(void)
 	return true;
 }
 
-void task_reactor_delete(void)
+static bool task_reactor_delete(void)
 {
-	queue_ui_delete();
+    bool all_deleted = true;
 
-	for(uint8_t i = 0; i < AO_LED_COLOR__N; i++)
-		queue_led_delete(&hao_led[i]);
+    all_deleted &= queue_ui_delete();
 
-	LOGGER_INFO("Eliminando task_reactor");
-	htask_reactor = NULL;
-	vTaskDelete(NULL);
+    for (uint8_t i = 0; i < AO_LED_COLOR__N; i++) {
+        all_deleted &= queue_led_delete(&hao_led[i]);
+    }
+
+    if (!all_deleted) {
+        LOGGER_INFO("Reactor: colas con pendientes; reintentar más tarde");
+        return false;
+    }
+
+    LOGGER_INFO("Eliminando task_reactor");
+    htask_reactor = NULL;
+    vTaskDelete(NULL);
+    return true;       /* no se alcanza */
 }
+
 
 /********************** internal functions definition ************************/
 
-bool reactor_has_work(void)
+static bool reactor_has_work(void)
 {
-	if(NULL != hao_ui.hqueue)
-		if(uxQueueMessagesWaiting(hao_ui.hqueue))
-			return true;
-
-	for(uint8_t i = 0; i < AO_LED_COLOR__N; i++)
-		if(NULL != hao_led[i].hqueue)
-			if(uxQueueMessagesWaiting(hao_led[i].hqueue))
-				return true;
-
-	return false;
+    if (ao_ui_has_work()) {
+        return true;
+    }
+    for (uint8_t i = 0; i < AO_LED_COLOR__N; i++) {
+        if (ao_led_has_work(&hao_led[i])) {
+            return true;
+        }
+    }
+    return false;
 }
-
 
 /********************** end of file ******************************************/

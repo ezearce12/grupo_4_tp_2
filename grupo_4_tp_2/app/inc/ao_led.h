@@ -92,9 +92,9 @@ extern const char * const led_action_name[];
 /********************** external functions declaration ***********************/
 
 void process_ao_led   (ao_led_handle_t* hao);
-void queue_led_delete (ao_led_handle_t* hao);
-bool ao_led_send_event(ao_led_handle_t* hao, ao_led_message_t* pmsg);
-
+bool queue_led_delete(ao_led_handle_t* p_led_handle);
+bool ao_led_send_event(ao_led_handle_t* p_led_handle, ao_led_message_t* p_led_message);
+bool ao_led_has_work(const ao_led_handle_t* p_led_handle);
 /********************** End of CPP guard *************************************/
 #ifdef __cplusplus
 }

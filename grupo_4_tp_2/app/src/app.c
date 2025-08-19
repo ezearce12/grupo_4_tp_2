@@ -66,7 +66,7 @@ void app_init(void)
 {
   BaseType_t status;
 
-  status = xTaskCreate(task_button, "task_button", 128, NULL, tskIDLE_PRIORITY, NULL);
+  status = xTaskCreate(task_button, "task_button", 128, NULL, tskIDLE_PRIORITY + 2, NULL);
   while (pdPASS != status)
   {
     // error
